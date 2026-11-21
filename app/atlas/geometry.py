@@ -23,7 +23,16 @@ from typing import Any
 
 from app.config import BACKEND_DIR
 
-RUTA_GEOJSON = BACKEND_DIR / "data" / "atlas" / "alcaldias" / "alcaldias-cdmx.geojson"
+#: Copia versionada dentro del paquete: viaja en la imagen (`COPY app ./app`).
+RUTA_VERSIONADA = Path(__file__).resolve().parent / "data" / "alcaldias-cdmx.geojson"
+
+#: Ruta del monorepo (desarrollo local): `backend/data/atlas/alcaldias/...`.
+RUTA_MONOREPO = BACKEND_DIR / "data" / "atlas" / "alcaldias" / "alcaldias-cdmx.geojson"
+
+#: GeoJSON de las alcaldías de la CDMX. La imagen Docker solo trae la copia
+#: versionada; en el monorepo se usa la copia original de `backend/data`.
+RUTA_GEOJSON = RUTA_VERSIONADA if RUTA_VERSIONADA.exists() else RUTA_MONOREPO
+
 
 #: Atribución que la interfaz debe mostrar junto al mapa.
 ATRIBUCION = {

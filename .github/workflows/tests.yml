@@ -19,7 +19,8 @@ jobs:
       - name: Verificar archivos obligatorios
         run: |
           set -eu
-          for archivo in app/main.py requirements.txt requirements-dev.txt .env.example README.md; do
+          for archivo in app/main.py requirements.txt requirements-dev.txt .env.example README.md \
+                         app/atlas/data/alcaldias-cdmx.geojson; do
             test -s "$archivo" || { echo "Falta $archivo"; exit 1; }
           done
 
@@ -148,6 +149,19 @@ jobs:
           # índice SQLite del Copiloto es escribible.
           docker exec api-ci id
           docker exec api-ci test -w /app/data/copiloto_nl_sql
+
+      - name: La geometría de alcaldías viaja en la imagen
+        run: |
+          set -eu
+          # El mapa del tablero se dibuja con este GeoJSON: si falta en la
+          # imagen, /geometria responde con features vacío y el mapa no aparece.
+          docker exec api-ci python -c "
+          import json, urllib.request
+          datos = json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/atlas-vial/geometria', timeout=10))
+          total = len(datos.get('features') or [])
+          print('alcaldías en la imagen:', total)
+          assert total == 16, f'se esperaban 16 alcaldías, hay {total}'
+          "
 
       - name: Registro del contenedor y limpieza
         if: always()
