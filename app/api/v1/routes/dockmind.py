@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
 from app.analisis import dockmind as analisis
-from app.api.deps import CuotaLLMDep, SettingsDep
+from app.api.deps import SettingsDep
 from app.api.v1.routes.comun_llm import ejecutar_consulta
 
 router = APIRouter(prefix="/dockmind", tags=["DockMind · demanda"])
@@ -102,7 +102,7 @@ def health(settings: SettingsDep) -> dict:
     summary="Explica el plan calculado y propone opciones (no ordena compras)",
 )
 def analizar_plan(
-    peticion: PeticionAnalisis, settings: SettingsDep, cuota: CuotaLLMDep
+    peticion: PeticionAnalisis, settings: SettingsDep
 ) -> dict:
     contexto = peticion.model_dump()
     return ejecutar_consulta(lambda: analisis.analizar(settings, contexto))

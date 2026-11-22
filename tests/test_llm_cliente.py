@@ -10,6 +10,16 @@ from app.config import Settings
 from app.llm import cliente
 
 
+@pytest.fixture(autouse=True)
+def _sin_cuotas(monkeypatch):
+    """El transporte se prueba aquí; las cuotas tienen su propio archivo."""
+    from app.llm import limites
+
+    monkeypatch.setattr(
+        limites, "reservar_llamada", lambda settings, *, ip=None: {"visitante_del_dia": 1}
+    )
+
+
 def ajustes(**extra) -> Settings:
     base = {
         "_env_file": None,

@@ -19,6 +19,22 @@ def ejecutar_consulta(accion: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     """Ejecuta la consulta y traduce los errores tipados del cliente."""
     try:
         return accion()
+    except cliente.LimitesNoConfigurados as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except cliente.LimitesNoDisponibles as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except cliente.CuotaExcedida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.reintentar_en)},
+        ) from exc
     except cliente.LlmNoConfigurado as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

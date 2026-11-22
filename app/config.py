@@ -127,15 +127,22 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     #: Límites comunes a todas las demos que consultan al modelo.
     llm_timeout_s: float = Field(default=30.0, ge=5.0, le=120.0)
-    llm_max_tokens: int = Field(default=600, ge=64, le=2_000)
-    #: Consultas por minuto y por proceso (ventana deslizante): protege el gasto.
+    #: Tope de salida por consulta; el cliente nunca envía más que este valor.
+    llm_max_tokens: int = Field(default=300, ge=64, le=2_000)
+    #: Consultas por minuto y por proceso (ventana deslizante, segunda barrera).
     llm_consultas_por_minuto: int = Field(default=5, ge=1, le=120)
+    #: Clave estable (hex) para el HMAC de los identificadores de cuota.
+    #: Sin ella las rutas LLM fallan cerrado: no se guarda ninguna IP en claro.
+    llm_cuota_hmac_key: str | None = None
+    #: Intervalo mínimo entre consultas de un mismo visitante, en segundos.
+    llm_intervalo_minimo_s: int = Field(default=600, ge=0, le=86_400)
     #: Cuotas compartidas entre workers (base y colección dedicadas de la app).
     llm_limites_db: str = "portfolio_guard"
     llm_limites_coleccion: str = "llm_limites"
-    llm_max_solicitudes_por_ip_dia: int = Field(default=20, ge=1, le=10_000)
-    llm_max_solicitudes_dia: int = Field(default=200, ge=1, le=100_000)
-    llm_max_tokens_dia: int = Field(default=60_000, ge=1_000, le=50_000_000)
+    llm_max_solicitudes_por_ip_dia: int = Field(default=1, ge=1, le=10_000)
+    llm_max_solicitudes_dia: int = Field(default=10, ge=1, le=100_000)
+    #: Tope diario de tokens para toda la API (10 consultas × 300 = 3 000).
+    llm_max_tokens_dia: int = Field(default=3_000, ge=1_000, le=50_000_000)
     #: Redes cuyo `X-Real-IP`/`X-Forwarded-For` se acepta (proxy del despliegue).
     llm_proxies_confiables: str = (
         "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"

@@ -14,7 +14,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import CuotaLLMDep, DatabaseDep, SettingsDep
+from app.api.deps import DatabaseDep, SettingsDep
 from app.nl_sql.service import CopilotoNlSql, DatasetError, QuestionError
 
 router = APIRouter(
@@ -50,7 +50,6 @@ def data(servicio: CopilotoDep) -> dict:
 @router.get("/query", summary="Interpreta una pregunta y ejecuta SQL de plantilla")
 def query(
     servicio: CopilotoDep,
-    cuota: CuotaLLMDep,
     question: Annotated[
         str,
         Query(

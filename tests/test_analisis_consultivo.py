@@ -17,7 +17,6 @@ from app.analisis import dockmind, kilometro_cero, ripple_room
 from app.api.v1.routes import dockmind as ruta_dockmind
 from app.api.v1.routes import kilometro_cero as ruta_kilometro
 from app.api.v1.routes import ripple_room as ruta_ripple
-from app.api.deps import exigir_cuota_llm
 from app.config import Settings, get_settings
 from app.llm import cliente
 
@@ -308,7 +307,6 @@ def _app(rutas, settings: Settings) -> TestClient:
     for router in rutas:
         app.include_router(router.router, prefix="/api/v1")
     app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[exigir_cuota_llm] = lambda: None
     return TestClient(app)
 
 

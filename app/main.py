@@ -28,6 +28,29 @@ from app.db.mongo import close_database, init_database
 logger = logging.getLogger("app")
 
 
+class IPVisitanteMiddleware(BaseHTTPMiddleware):
+    """Deja la IP real del visitante en el contexto de la petición.
+
+    La resolución (y el hecho de confiar o no en `X-Forwarded-For`) vive en
+    `app.llm.limites.ip_real`; aquí solo se propaga. La IP no se registra ni se
+    persiste: el almacén de cuotas guarda un HMAC con vencimiento diario.
+    """
+
+    def __init__(self, app, settings) -> None:
+        super().__init__(app)
+        self.settings = settings
+
+    async def dispatch(self, request, call_next):  # type: ignore[override]
+        from app.llm import contexto, limites
+
+        host = request.client.host if request.client else None
+        token = contexto.fijar_ip(limites.ip_real(host, request.headers, self.settings))
+        try:
+            return await call_next(request)
+        finally:
+            contexto.restablecer(token)
+
+
 class LimiteCuerpoMiddleware(BaseHTTPMiddleware):
     """Rechaza cuerpos mayores que el tope configurado (413).
 
@@ -189,6 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # miles de puntos del mapa). Se comprimen en tránsito; el contenido no cambia.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(LimiteCuerpoMiddleware, maximo=settings.http_max_cuerpo_bytes)
+    app.add_middleware(IPVisitanteMiddleware, settings=settings)
 
     if settings.origins:
         app.add_middleware(

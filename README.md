@@ -408,29 +408,38 @@ La integración continua ejecuta `pytest -q` completo, no una recolección. No s
 ejecuta ninguna ingesta contra Atlas: las pruebas usan MongoDB local o fixtures, y
 los snapshots públicos de las demos viven en `data/snapshots/`.
 
-### Cuotas de uso y costo (rutas LLM)
+### Cuotas de uso y costo (consultas LLM)
 
-Las rutas que consultan al proveedor (`/incident-commander/runs/{id}/analysis`,
-`/kilometro-cero/analisis`, `/ripple-room/analisis`, `/dockmind/analisis`,
-`/briefing-banxico/query`, `/copiloto-nl-sql/query`) pasan por un guardián común:
+Las seis demos que consultan al modelo (Briefing Banxico, NL-to-SQL, Data
+Incident Commander, Kilómetro Cero, The Ripple Room y DockMind) comparten un
+único control, aplicado en `app/llm/cliente.py` (el transporte común): cualquier
+llamada pasa por la reserva de cupo **antes** de tocar el proveedor.
 
-- **Cupo por visitante**: límite por minuto y cupo diario por IP.
-- **Cupo global**: solicitudes y tokens diarios para toda la API.
-- **Almacén compartido**: base y colección dedicadas en MongoDB
-  (`LLM_LIMITES_DB`/`LLM_LIMITES_COLECCION`), con contadores atómicos
-  (`find_one_and_update` + `upsert`) e índice TTL. Vale para varios workers y
-  para contenedores recreados; no se usa el Redis de la plataforma.
-- **Falla cerrado**: si el almacén no responde, solo las rutas LLM devuelven 503
-  (con `Retry-After` en los 429). Las rutas de datos siguen funcionando.
-- **IP real**: se toma de la conexión y solo se acepta `X-Real-IP` /
-  `X-Forwarded-For` cuando el par está en `LLM_PROXIES_CONFIABLES` (el proxy del
-  despliegue). No se guarda la IP: la clave de visitante es un HMAC con la fecha
-  del día, así que caduca sola.
-- **Presupuesto**: se reserva el techo (`LLM_MAX_TOKENS`) antes de llamar, no el
-  consumo real; el tope diario de tokens no se puede rebasar (puede cortar antes).
-- **Cuerpo**: `HTTP_MAX_CUERPO_BYTES` acota el cuerpo de cualquier petición (413).
+| Límite | Valor inicial | Variable |
+|---|---|---|
+| Consultas por visitante y día (compartido entre las seis demos) | 1 | `LLM_MAX_SOLICITUDES_POR_IP_DIA` |
+| Consultas globales por día | 10 | `LLM_MAX_SOLICITUDES_DIA` |
+| Tokens de salida por consulta | 300 | `LLM_MAX_TOKENS` |
+| Tokens reservados por día | 3 000 | `LLM_MAX_TOKENS_DIA` |
+| Intervalo mínimo entre consultas del visitante | 600 s | `LLM_INTERVALO_MINIMO_S` |
 
-> La protección del código **no sustituye** el límite monetario del proyecto de
-> OpenAI: los límites de gasto del proyecto son un tope de facturación, no una
-> cuota por petición. Configúralos en la consola de OpenAI (Project → Limits) y
-> mantén ambos.
+- **Días UTC**; al agotarse el cupo se responde **429** con `Retry-After` (segundos
+  hasta el intervalo o hasta la medianoche UTC) y un mensaje claro.
+- **No se cuentan visitas sin llamada**: la reserva ocurre justo antes del POST.
+- **Atómico y compartido**: contadores en `portfolio_guard.llm_limites` con
+  `find_one_and_update` + `upsert` e índice TTL; valen para varios workers y para
+  contenedores recreados. No se usa memoria ni el Redis de la plataforma.
+- **Una llamada que falla o agota el tiempo consume cupo**: el proveedor pudo
+  procesarla y facturarla; el objetivo es proteger el gasto.
+- **Sin IP en claro**: el identificador es `HMAC-SHA256(LLM_CUOTA_HMAC_KEY,
+  ip|día)`; la clave vive solo en el entorno del `api` y **si falta, las rutas LLM
+  fallan cerrado (503)** mientras el resto del sitio sigue sirviendo.
+- **IP real**: la de la conexión; `X-Real-IP`/`X-Forwarded-For` solo se aceptan si
+  el par está en `LLM_PROXIES_CONFIABLES` (Traefik/nginx del despliegue). Un
+  visitante no puede falsificar su IP.
+- El intervalo de 10 minutos es una protección adicional: con 1 consulta diaria
+  por visitante, el límite diario ya es más estricto.
+
+> Esta protección **no sustituye** el límite monetario del proyecto de OpenAI:
+> configúralo aparte (US$ 1/mes, alerta en US$ 0.50 y «Enforce a hard limit»). Es
+> un tope de facturación del proveedor, no una garantía de gasto cero.

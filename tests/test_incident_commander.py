@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import incident_commander as rutas
-from app.api.deps import exigir_cuota_llm
 from app.config import BACKEND_DIR, Settings
 from app.incident_commander import service as servicio_mod
 from app.llm import cliente
@@ -67,6 +66,16 @@ def _ventana_limpia():
     yield
     cliente.VENTANA.reiniciar()
 
+@pytest.fixture(autouse=True)
+def _sin_cuotas_compartidas(monkeypatch):
+    """Las cuotas compartidas tienen su propio archivo; aquí se anulan."""
+    from app.llm import limites
+
+    monkeypatch.setattr(
+        limites, "reservar_llamada", lambda settings, *, ip=None: {"visitante_del_dia": 1}
+    )
+
+
 def sobre(**contenido) -> dict:
     """Sobre de Chat Completions con el contenido indicado."""
     datos = {
@@ -86,7 +95,6 @@ def cliente_de(servicio_activo: IncidentCommander) -> TestClient:
     app = FastAPI()
     app.include_router(rutas.router, prefix="/api/v1")
     app.dependency_overrides[rutas.get_incident_service] = lambda: servicio_activo
-    app.dependency_overrides[exigir_cuota_llm] = lambda: None
     return TestClient(app)
 
 

@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
 from app.analisis import kilometro_cero as analisis
-from app.api.deps import CuotaLLMDep, SettingsDep
+from app.api.deps import SettingsDep
 from app.api.v1.routes.comun_llm import ejecutar_consulta
 
 router = APIRouter(prefix="/kilometro-cero", tags=["Kilómetro Cero · logística"])
@@ -96,7 +96,7 @@ def health(settings: SettingsDep) -> dict:
     summary="Recomendación consultiva del escenario activo (no despacha nada)",
 )
 def analizar_escenario(
-    peticion: PeticionAnalisis, settings: SettingsDep, cuota: CuotaLLMDep
+    peticion: PeticionAnalisis, settings: SettingsDep
 ) -> dict:
     contexto = peticion.model_dump()
     return ejecutar_consulta(lambda: analisis.analizar(settings, contexto))

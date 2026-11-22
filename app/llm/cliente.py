@@ -21,11 +21,18 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.config import Settings
+from app.llm import contexto, limites
 
 #: Tope duro de caracteres que se envían como contexto al modelo.
 MAXIMO_CONTEXTO = 6_000
 #: Tope duro de tokens de salida por consulta.
 MAXIMO_TOKENS = 700
+
+
+#: Errores de cuota, reexportados para que las rutas los distingan.
+CuotaExcedida = limites.CuotaExcedida
+LimitesNoConfigurados = limites.LimitesNoConfigurados
+LimitesNoDisponibles = limites.LimitesNoDisponibles
 
 
 class LlmNoConfigurado(RuntimeError):
@@ -105,7 +112,24 @@ def post_chat(
     *,
     timeout: float | None = None,
 ) -> dict[str, Any]:
-    """POST a `/chat/completions`; devuelve el sobre completo como diccionario."""
+    """POST a `/chat/completions` con reserva de cuota previa.
+
+    Es el único transporte de las seis demos, así que aquí se aplican las cuotas
+    compartidas (IP anónima + cupo global) y el tope de salida. Si la reserva no
+    se puede hacer, no se llama al proveedor: falla cerrado.
+    """
+    # Reserva atómica del cupo antes de gastar: si no hay cupo, no hay llamada.
+    limites.reservar_llamada(settings, ip=contexto.ip_actual())
+
+    # Ningún llamador puede superar el tope configurado de salida.
+    tope = int(settings.llm_max_tokens)
+    payload = dict(payload)
+    try:
+        pedido = int(payload.get("max_tokens") or tope)
+    except (TypeError, ValueError):
+        pedido = tope
+    payload["max_tokens"] = min(pedido, tope)
+
     peticion = Request(
         _endpoint(settings),
         data=json.dumps(payload).encode("utf-8"),

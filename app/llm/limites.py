@@ -1,26 +1,24 @@
-"""Cuotas de uso del proveedor LLM compartidas entre workers.
+"""Cuotas compartidas de las consultas LLM (1 por IP/día, 10 globales/día).
 
-El contador en memoria de `cliente.py` protege a un proceso; esto protege a la
-API pública: varias instancias/workers incrementan los mismos documentos en la
-base de datos de la aplicación, de forma **atómica** (`find_one_and_update` con
-`upsert`), así que un visitante no puede consumir la cuota de los demás.
+Todo se contabiliza en la **misma base MongoDB de la aplicación**, en la base y
+colección dedicadas `portfolio_guard.llm_limites`, con incrementos atómicos
+(`find_one_and_update` + `upsert`): los contadores valen para todos los workers y
+sobreviven a los reinicios.
 
-Decisiones:
+Decisiones de diseño:
 
-* **Almacén**: la base de datos de la aplicación (MongoDB), en una base y
-  colección dedicadas (`llm_limites`). Es privada (sin puerto público), persistente
-  y ya está en el despliegue: no se usa el Redis global de Dokploy ni se añade un
-  servicio con otro ciclo de vida. La interfaz está aislada aquí por si se quisiera
-  cambiar por Redis.
-* **Claves derivadas**: nunca se guarda ni se registra la IP en claro. La clave es
-  `HMAC-SHA256(secret, ip|día)` truncada, con `secret` = la clave del proveedor
-  (presente solo en el entorno del `api`) y el día dentro del mensaje: las claves
-  caducan solas y no se pueden revertir sin el secreto.
-* **Falla cerrado**: si la base de cuotas no responde, las rutas LLM devuelven 503.
-  Las rutas que no usan LLM no pasan por aquí.
-* **Presupuesto**: se reserva el techo (`llm_max_tokens`) antes de llamar, no el
-  consumo real; así el tope diario de tokens no se puede rebasar. Puede cortar
-  antes de agotar el presupuesto real, nunca después.
+* **Reserva antes de llamar**: el cupo se toma en `cliente.post_chat`, el único
+  transporte que usan las seis demos. Si la reserva falla, no hay llamada.
+* **Una llamada que falla sigue contando**: el proveedor pudo procesarla (y
+  facturarla) antes de agotar el tiempo de espera; el objetivo es proteger el
+  gasto, no premiar los fallos. Está documentado y probado.
+* **Sin IP en claro**: el identificador es `HMAC-SHA256(LLM_CUOTA_HMAC_KEY,
+  ip|día)` truncado a 32 hex. La clave vive solo en el entorno del `api`; si
+  falta, las rutas LLM **fallan cerrado** (503) y el resto del sitio sigue igual.
+* **Días UTC**: la cuota se reinicia a medianoche UTC.
+* **Intervalo mínimo** entre consultas del mismo visitante (10 minutos). Con una
+  única consulta diaria por IP, el límite diario ya es más estricto; el intervalo
+  protege además si algún día se relaja ese tope.
 """
 
 from __future__ import annotations
@@ -29,15 +27,18 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address, ip_network
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
-from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 
 from app.config import Settings
 
-#: Cabeceras que solo se aceptan cuando la conexión viene de un proxy confiable.
 CABECERAS_IP = ("x-real-ip", "x-forwarded-for")
+MINIMO_CLAVE_HEX = 32
+
+
+class LimitesNoConfigurados(RuntimeError):
+    """Falta la clave HMAC de cuotas; sin ella no se puede identificar visitantes."""
 
 
 class LimitesNoDisponibles(RuntimeError):
@@ -45,9 +46,9 @@ class LimitesNoDisponibles(RuntimeError):
 
 
 class CuotaExcedida(RuntimeError):
-    """Se alcanzó un límite de uso; `reintentar_en` indica cuándo reintentar."""
+    """Se alcanzó una cuota; `reintentar_en` indica cuántos segundos esperar."""
 
-    def __init__(self, mensaje: str, *, reintentar_en: int = 60) -> None:
+    def __init__(self, mensaje: str, *, reintentar_en: int) -> None:
         super().__init__(mensaje)
         self.reintentar_en = max(1, int(reintentar_en))
 
@@ -66,7 +67,6 @@ def _redes(valor: str) -> list[Any]:
 
 
 def es_proxy_confiable(host: str | None, settings: Settings) -> bool:
-    """Solo las redes declaradas pueden aportar cabeceras de IP."""
     if not host:
         return False
     try:
@@ -77,11 +77,11 @@ def es_proxy_confiable(host: str | None, settings: Settings) -> bool:
 
 
 def ip_real(host_conexion: str | None, cabeceras: Mapping[str, str], settings: Settings) -> str:
-    """IP del visitante: la de la conexión, salvo que venga de un proxy confiable.
+    """IP del visitante; solo se aceptan cabeceras de proxies declarados.
 
-    `X-Real-IP` lo escribe el nginx del despliegue con `$remote_addr`; solo se usa
-    si el par de la conexión está en las redes confiables. `X-Forwarded-For` se
-    ignora salvo en ese mismo caso y se toma su primer valor.
+    Traefik/nginx añaden `X-Real-IP`/`X-Forwarded-For`. Si la conexión llega de
+    una red confiable se toma la primera IP de esas cabeceras; si no, se usa la IP
+    de la conexión y se ignora lo que envíe el cliente (no puede falsificarla).
     """
     if not es_proxy_confiable(host_conexion, settings):
         return host_conexion or "desconocida"
@@ -97,44 +97,52 @@ def ip_real(host_conexion: str | None, cabeceras: Mapping[str, str], settings: S
     return host_conexion or "desconocida"
 
 
-def clave_ip(ip: str, dia: str, settings: Settings) -> str:
-    """Clave derivada con vencimiento diario; no se puede revertir sin el secreto."""
-    secreto = (settings.llm_api_key or settings.app_name or "sin-proveedor").encode("utf-8")
-    return hmac.new(secreto, f"{ip}|{dia}".encode("utf-8"), hashlib.sha256).hexdigest()[:16]
+def clave_hmac(settings: Settings) -> str:
+    clave = (settings.llm_cuota_hmac_key or "").strip()
+    if len(clave) < MINIMO_CLAVE_HEX:
+        raise LimitesNoConfigurados(
+            "Las cuotas LLM no están configuradas (falta LLM_CUOTA_HMAC_KEY). "
+            "El servicio no hará consultas al proveedor hasta configurarla."
+        )
+    return clave
 
 
-def _dia_actual() -> str:
+def identificador(ip: str, dia: str, settings: Settings) -> str:
+    """HMAC con la clave del despliegue: sin ella no se puede reconstruir la IP."""
+    mensaje = f"{ip}|{dia}".encode("utf-8")
+    return hmac.new(clave_hmac(settings).encode("utf-8"), mensaje, hashlib.sha256).hexdigest()[:32]
+
+
+def _dia_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _minuto_actual() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+def _ahora_ms() -> int:
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
-def _expira(dias: int = 2) -> datetime:
-    return datetime.now(timezone.utc) + timedelta(days=dias)
+def _segundos_hasta_medianoche_utc() -> int:
+    ahora = datetime.now(timezone.utc)
+    manana = (ahora + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1, int((manana - ahora).total_seconds()))
 
 
-def _expira_minutos(minutos: int = 5) -> datetime:
+def _expira(minutos: int = 60 * 49) -> datetime:
     return datetime.now(timezone.utc) + timedelta(minutes=minutos)
 
 
 class Limitador:
-    """Contadores diarios y por minuto, atómicos en la colección dedicada."""
-
     def __init__(self, db: Any, settings: Settings) -> None:
         self.coleccion = db[settings.llm_limites_coleccion]
+        self.settings = settings
 
-    def _incrementar(self, clave: str, *, campos: dict[str, int], expira: datetime) -> dict[str, Any]:
+    def _incrementar(self, clave: str, *, campos: dict[str, int], conjunto: dict | None = None):
         try:
             documento = self.coleccion.find_one_and_update(
                 {"_id": clave},
-                {
-                    "$inc": campos,
-                    "$setOnInsert": {"expira_en": expira},
-                },
+                {"$inc": campos, "$set": conjunto or {}, "$setOnInsert": {"expira_en": _expira()}},
                 upsert=True,
-                return_document=ReturnDocument.AFTER,
+                return_document=True,
             )
         except PyMongoError as exc:
             raise LimitesNoDisponibles(
@@ -146,65 +154,78 @@ class Limitador:
             )
         return documento
 
-    def reservar(
-        self,
-        *,
-        clave_visitante: str,
-        settings: Settings,
-        costo_tokens: int,
-    ) -> dict[str, int]:
-        """Reserva una solicitud y su techo de tokens; lanza si supera cualquier tope."""
-        dia = _dia_actual()
-        minuto = _minuto_actual()
+    def _ultima(self, clave: str) -> int | None:
+        try:
+            documento = self.coleccion.find_one({"_id": clave})
+        except PyMongoError as exc:
+            raise LimitesNoDisponibles(
+                "No se pudo comprobar la cuota de consultas; inténtalo más tarde."
+            ) from exc
+        if not isinstance(documento, dict):
+            return None
+        valor = documento.get("ultima")
+        return int(valor) if isinstance(valor, int) else None
 
-        por_minuto = self._incrementar(
-            f"m:{clave_visitante}:{minuto}",
-            campos={"n": 1},
-            expira=_expira_minutos(5),
-        )
-        if int(por_minuto.get("n", 0)) > int(settings.llm_consultas_por_minuto):
+    def reservar(self, *, ip: str) -> dict[str, int]:
+        """Reserva una consulta; lanza `CuotaExcedida` si no hay cupo.
+
+        Orden: intervalo mínimo del visitante, cupo diario por IP, cupo global de
+        solicitudes y tope global de tokens. Todos los contadores se incrementan
+        de forma atómica antes de devolver el permiso.
+        """
+        dia = _dia_utc()
+        clave = identificador(ip, dia, self.settings)
+        ahora = _ahora_ms()
+
+        ultima = self._ultima(f"ip:{clave}:{dia}")
+        if ultima is not None:
+            transcurrido = (ahora - ultima) / 1000
+            if transcurrido < self.settings.llm_intervalo_minimo_s:
+                espera = max(1, int(round(self.settings.llm_intervalo_minimo_s - transcurrido)))
+                raise CuotaExcedida(
+                    "Acabas de hacer una consulta: espera unos minutos antes de "
+                    "volver a intentarlo.",
+                    reintentar_en=espera,
+                )
+
+        por_ip = self._incrementar(f"ip:{clave}:{dia}", campos={"n": 1}, conjunto={"ultima": ahora})
+        if int(por_ip.get("n", 0)) > int(self.settings.llm_max_solicitudes_por_ip_dia):
             raise CuotaExcedida(
-                "Demasiadas consultas seguidas desde este visitante; espera un minuto.",
-                reintentar_en=60,
+                "Este visitante ya usó su consulta de hoy; el cupo se renueva a "
+                "medianoche UTC.",
+                reintentar_en=_segundos_hasta_medianoche_utc(),
             )
 
-        por_ip = self._incrementar(
-            f"ip:{clave_visitante}:{dia}",
-            campos={"n": 1},
-            expira=_expira(2),
-        )
-        if int(por_ip.get("n", 0)) > int(settings.llm_max_solicitudes_por_ip_dia):
-            raise CuotaExcedida(
-                "Este visitante alcanzó el máximo de consultas por día.", reintentar_en=3600
-            )
-
+        costo = int(self.settings.llm_max_tokens)
         global_dia = self._incrementar(
-            f"total:{dia}",
-            campos={"n": 1, "tokens": costo_tokens},
-            expira=_expira(2),
+            f"total:{dia}", campos={"n": 1, "tokens": costo}, conjunto=None
         )
-        if int(global_dia.get("n", 0)) > int(settings.llm_max_solicitudes_dia):
+        if int(global_dia.get("n", 0)) > int(self.settings.llm_max_solicitudes_dia):
             raise CuotaExcedida(
-                "La API alcanzó su máximo diario de consultas; vuelve mañana.",
-                reintentar_en=3600,
+                "El portafolio agotó sus consultas de hoy; el cupo se renueva a "
+                "medianoche UTC.",
+                reintentar_en=_segundos_hasta_medianoche_utc(),
             )
-        if int(global_dia.get("tokens", 0)) > int(settings.llm_max_tokens_dia):
+        if int(global_dia.get("tokens", 0)) > int(self.settings.llm_max_tokens_dia):
             raise CuotaExcedida(
-                "La API alcanzó su presupuesto diario de tokens; vuelve mañana.",
-                reintentar_en=3600,
+                "El portafolio agotó su presupuesto diario de tokens; vuelve a "
+                "medianoche UTC.",
+                reintentar_en=_segundos_hasta_medianoche_utc(),
             )
-        return {
-            "visitante_del_dia": int(por_ip.get("n", 0)),
-            "global_del_dia": int(global_dia.get("n", 0)),
-        }
+        return {"visitante_del_dia": int(por_ip.get("n", 0)), "global_del_dia": int(global_dia.get("n", 0))}
 
     def estado(self) -> dict[str, int]:
-        """Uso de hoy, para `/health` (solo contadores, sin claves de visitante)."""
-        dia = _dia_actual()
+        dia = _dia_utc()
         documento = self.coleccion.find_one({"_id": f"total:{dia}"}) or {}
         return {
             "solicitudes_hoy": int(documento.get("n", 0)),
             "tokens_reservados_hoy": int(documento.get("tokens", 0)),
+            "maximo_por_ip_dia": int(self.settings.llm_max_solicitudes_por_ip_dia),
+            "maximo_global_dia": int(self.settings.llm_max_solicitudes_dia),
+            "maximo_tokens_dia": int(self.settings.llm_max_tokens_dia),
+            "intervalo_minimo_s": int(self.settings.llm_intervalo_minimo_s),
+            "tokens_por_consulta": int(self.settings.llm_max_tokens),
+            "dia_utc": dia,
         }
 
 
@@ -212,30 +233,24 @@ def limitador_para(db: Any, settings: Settings) -> Limitador:
     return Limitador(db, settings)
 
 
+def reservar_llamada(settings: Settings, *, ip: str | None) -> dict[str, int]:
+    """Punto único de reserva, invocado por el cliente antes de cada llamada."""
+    clave_hmac(settings)  # falla cerrado si no hay clave configurada
+    from app.db.mongo import get_database
+
+    try:
+        base = get_database().db.client[settings.llm_limites_db]
+    except Exception as exc:  # noqa: BLE001 - sin almacén no se llama al proveedor
+        raise LimitesNoDisponibles(
+            "No se pudo comprobar la cuota de consultas; inténtalo más tarde."
+        ) from exc
+    return limitador_para(base, settings).reservar(ip=ip or "desconocida")
+
+
 def asegurar_indices(db: Any, settings: Settings) -> None:
-    """Índice TTL: los contadores caducan solos en el almacén."""
     try:
         db[settings.llm_limites_coleccion].create_index(
             "expira_en", expireAfterSeconds=0, name="ttl_cuotas"
         )
     except PyMongoError:
-        # Un fallo al crear el índice no debe tumbar el arranque: los documentos
-        # llevan `expira_en` y se limpian igualmente en la siguiente comprobación.
         return
-
-
-def reservar_para_peticion(
-    *,
-    host_conexion: str | None,
-    cabeceras: Mapping[str, str],
-    db: Any,
-    settings: Settings,
-) -> dict[str, int]:
-    """Punto de entrada de las rutas: IP real → clave derivada → reserva atómica."""
-    ip = ip_real(host_conexion, cabeceras, settings)
-    clave = clave_ip(ip, _dia_actual(), settings)
-    return limitador_para(db, settings).reservar(
-        clave_visitante=clave,
-        settings=settings,
-        costo_tokens=int(settings.llm_max_tokens),
-    )

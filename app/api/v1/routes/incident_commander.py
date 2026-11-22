@@ -18,7 +18,6 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import CuotaLLMDep
 from app.config import Settings
 from app.llm import cliente
 from app.incident_commander.service import (
@@ -117,13 +116,24 @@ def approve_run(run_id: str, body: ApprovalRequest, servicio: IncidentDep) -> di
     "/runs/{run_id}/analysis",
     summary="Consulta consultiva al proveedor compatible con OpenAI",
 )
-def analyse_run(run_id: str, servicio: IncidentDep, cuota: CuotaLLMDep) -> dict:
+def analyse_run(run_id: str, servicio: IncidentDep) -> dict:
     """Devuelve una recomendación validada; nunca aprueba ni ejecuta."""
     try:
         return servicio.analizar(run_id)
     except RunNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except LlmNoConfigurado as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except cliente.CuotaExcedida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.reintentar_en)},
+        ) from exc
+    except (cliente.LimitesNoConfigurados, cliente.LimitesNoDisponibles) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),

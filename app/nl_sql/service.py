@@ -268,7 +268,7 @@ class CopilotoNlSql:
                     "years_allowed": list(SUPPORTED_YEARS),
                 },
                 validar=lambda datos: datos,
-                max_tokens=min(int(self.settings.llm_max_tokens), 400),
+                max_tokens=min(int(self.settings.llm_max_tokens), 300),
             )
             if not isinstance(plan, dict) or plan.get("unsupported"):
                 return None
