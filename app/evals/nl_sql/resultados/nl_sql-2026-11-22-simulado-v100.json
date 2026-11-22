@@ -1,0 +1,178 @@
+{
+  "conjunto": {
+    "version": "1.0.0",
+    "ruta": "app/evals/nl_sql/casos.jsonl",
+    "casos": 51,
+    "sintetico": true
+  },
+  "ejecucion": {
+    "fecha": "2026-11-22T03:40:50.284608+00:00",
+    "modo": "simulado",
+    "modelo": "mock-determinista-v1",
+    "proveedor_real": false,
+    "llamadas": 99
+  },
+  "limites": {
+    "pregunta_max_caracteres": 500,
+    "max_tokens_por_consulta": 300,
+    "cliente_compartido": true
+  },
+  "metricas_por_modo": {
+    "parser": {
+      "metricas": {
+        "casos": 51,
+        "casos_soportados": 28,
+        "casos_no_soportados": 23,
+        "acierto_exacto": 1.0,
+        "precision_indicadores": 1.0,
+        "precision_anios": 1.0,
+        "precision_operacion": 1.0,
+        "deteccion_no_soportado": 0.8261,
+        "falsos_soportados": 4,
+        "latencia_media_ms": 0.0198,
+        "latencia_mediana_ms": 0.017,
+        "tokens_totales": 0
+      },
+      "por_categoria": {
+        "directa": {
+          "casos": 16,
+          "acierto_exacto": 1.0,
+          "no_soportado_ok": 1.0
+        },
+        "parafraseada": {
+          "casos": 12,
+          "acierto_exacto": 1.0,
+          "no_soportado_ok": 1.0
+        },
+        "no_soportada": {
+          "casos": 13,
+          "acierto_exacto": 0.8462,
+          "no_soportado_ok": 0.8462
+        },
+        "adversarial": {
+          "casos": 10,
+          "acierto_exacto": 0.8,
+          "no_soportado_ok": 0.8
+        }
+      },
+      "fallidos": [
+        "n12",
+        "n13",
+        "a09",
+        "a10"
+      ]
+    },
+    "llm": {
+      "metricas": {
+        "casos": 51,
+        "casos_soportados": 28,
+        "casos_no_soportados": 23,
+        "acierto_exacto": 0.7857,
+        "precision_indicadores": 0.9286,
+        "precision_anios": 0.8929,
+        "precision_operacion": 0.8929,
+        "deteccion_no_soportado": 1.0,
+        "falsos_soportados": 0,
+        "latencia_media_ms": 0.0223,
+        "latencia_mediana_ms": 0.019,
+        "tokens_totales": 0
+      },
+      "por_categoria": {
+        "directa": {
+          "casos": 16,
+          "acierto_exacto": 0.8125,
+          "no_soportado_ok": 0.9375
+        },
+        "parafraseada": {
+          "casos": 12,
+          "acierto_exacto": 0.75,
+          "no_soportado_ok": 1.0
+        },
+        "no_soportada": {
+          "casos": 13,
+          "acierto_exacto": 1.0,
+          "no_soportado_ok": 1.0
+        },
+        "adversarial": {
+          "casos": 10,
+          "acierto_exacto": 1.0,
+          "no_soportado_ok": 1.0
+        }
+      },
+      "fallidos": [
+        "d03",
+        "d09",
+        "d15",
+        "p02",
+        "p09",
+        "p12"
+      ]
+    },
+    "llm_con_fallback": {
+      "metricas": {
+        "casos": 51,
+        "casos_soportados": 28,
+        "casos_no_soportados": 23,
+        "acierto_exacto": 0.8214,
+        "precision_indicadores": 0.9643,
+        "precision_anios": 0.9286,
+        "precision_operacion": 0.9286,
+        "deteccion_no_soportado": 0.8261,
+        "falsos_soportados": 4,
+        "latencia_media_ms": 0.0447,
+        "latencia_mediana_ms": 0.032,
+        "tokens_totales": 0
+      },
+      "por_categoria": {
+        "directa": {
+          "casos": 16,
+          "acierto_exacto": 0.875,
+          "no_soportado_ok": 1.0
+        },
+        "parafraseada": {
+          "casos": 12,
+          "acierto_exacto": 0.75,
+          "no_soportado_ok": 1.0
+        },
+        "no_soportada": {
+          "casos": 13,
+          "acierto_exacto": 0.8462,
+          "no_soportado_ok": 0.8462
+        },
+        "adversarial": {
+          "casos": 10,
+          "acierto_exacto": 0.8,
+          "no_soportado_ok": 0.8
+        }
+      },
+      "fallidos": [
+        "d09",
+        "d15",
+        "p02",
+        "p09",
+        "p12",
+        "n12",
+        "n13",
+        "a09",
+        "a10"
+      ]
+    }
+  },
+  "planes_invalidos_bloqueados": [
+    "a02",
+    "a05",
+    "n07"
+  ],
+  "tokens_totales": 53460,
+  "costo": {
+    "usd": "no calculable",
+    "motivo": "no hay tabla de precios verificada en el repositorio; no se estima sin base"
+  },
+  "notas": [
+    "Conjunto sintético: preguntas escritas a mano, sin datos privados.",
+    "Los esperados se derivan del contrato del sistema (catálogo, años y operaciones), no de respuestas del modelo.",
+    "En modo simulado el proveedor es un doble determinista; sus cifras no representan al modelo real.",
+    "La latencia del modo simulado mide el arnés, no la red del proveedor.",
+    "El costo en USD no es calculable sin tabla de precios; los tokens sí se registran."
+  ]
+}

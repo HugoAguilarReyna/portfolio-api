@@ -443,3 +443,36 @@ llamada pasa por la reserva de cupo **antes** de tocar el proveedor.
 > Esta protección **no sustituye** el límite monetario del proyecto de OpenAI:
 > configúralo aparte (US$ 1/mes, alerta en US$ 0.50 y «Enforce a hard limit»). Es
 > un tope de facturación del proveedor, no una garantía de gasto cero.
+
+### Evaluación reproducible de NL-to-SQL
+
+Conjunto sintético y versionado en `app/evals/nl_sql/casos.jsonl` (51 preguntas:
+directas, parafraseadas, no soportadas y adversariales). El resultado esperado se
+deriva del contrato del sistema —catálogo de tres indicadores, años 2019–2025,
+operaciones `trend`/`comparison`/`max`/`min` y solo México—, nunca de respuestas
+del modelo.
+
+```bash
+# Modo simulado (por omisión, sin red y sin coste)
+python scripts/evaluar_nl_sql.py
+
+# Llamadas reales: avisa de los cargos y exige confirmación explícita
+PORTFOLIO_EVAL_LIVE=1 python scripts/evaluar_nl_sql.py --live
+```
+
+Compara tres modos: `parser` (léxico), `llm` (solo planificador del modelo) y
+`llm_con_fallback` (modelo con respaldo léxico). Guarda un JSON con fecha,
+versión del conjunto, modo, modelo, métricas por modo y por categoría en
+`app/evals/nl_sql/resultados/`.
+
+Qué mide: acierto exacto del plan, precisión por campo (indicador, años,
+operación), detección de preguntas no soportadas, planes inválidos bloqueados,
+latencia y tokens. **El costo en USD figura como «no calculable»**: no hay tabla
+de precios verificada en el repositorio y no se estima sin base.
+
+Límites conocidos: en modo simulado el proveedor es un doble determinista (sus
+cifras no representan al modelo real) y la latencia mide el arnés, no la red. El
+conjunto documenta cuatro casos (`n12`, `n13`, `a09`, `a10`) donde el parser
+léxico asocia el término y devuelve un plan de lectura aunque el contrato diga
+«no soportado»: la evaluación los reporta como falsos soportados; el sistema
+sigue siendo de solo lectura porque solo construye `SELECT`.
