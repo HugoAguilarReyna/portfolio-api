@@ -44,7 +44,7 @@ def test_conjunto_no_contiene_secretos_ni_datos_privados() -> None:
         assert patron not in crudo, patron
 
 
-def test_parser_acierta_en_los_soportados_y_falla_solo_donde_esta_documentado() -> None:
+def test_parser_respeta_soportados_y_rechaza_los_fuera_de_contrato() -> None:
     """El conjunto mide el contrato: los desvíos del parser quedan registrados."""
     servicio = CopilotoNlSql(None, Settings(_env_file=None, nl_sql_audit_enabled=False))
     fallidos: list[str] = []
@@ -57,9 +57,8 @@ def test_parser_acierta_en_los_soportados_y_falla_solo_donde_esta_documentado() 
             assert evals.comparar(plan, caso["esperado"])["acierto_exacto"] is True, caso["id"]
         elif not evals.comparar(plan, caso["esperado"])["soporte_ok"]:
             fallidos.append(caso["id"])
-    # Los cuatro casos documentados con `nota`: el parser asocia el término y
-    # devuelve un plan de lectura donde el contrato dice «no soportado».
-    assert fallidos == ["n12", "n13", "a09", "a10"]
+    # n12/n13/a09/a10 quedan como regresiones de errores previamente publicados.
+    assert fallidos == []
 
 
 def test_operacion_y_plan_normalizados() -> None:
@@ -115,7 +114,7 @@ def test_el_arnes_es_determinista_en_modo_simulado(tmp_path) -> None:
     combo = resultado["metricas_por_modo"]["llm_con_fallback"]["metricas"]
 
     assert parser["acierto_exacto"] == 1.0
-    assert parser["falsos_soportados"] == 4
+    assert parser["falsos_soportados"] == 0
     assert llm["acierto_exacto"] == 0.7857
     assert llm["falsos_soportados"] == 0
     assert combo["acierto_exacto"] == 0.8214

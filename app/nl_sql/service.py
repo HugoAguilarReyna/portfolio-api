@@ -181,7 +181,7 @@ class CopilotoNlSql:
     def parse_local(self, pregunta: str) -> dict[str, Any]:
         """Parser léxico: catálogo cerrado, años explícitos y operación acotada."""
         q = normalizar(pregunta)
-        self._rechazar_pais(pregunta)
+        self._validar_alcance(pregunta)
         indicadores = [
             codigo
             for codigo, meta in METRICS.items()
@@ -241,6 +241,7 @@ class CopilotoNlSql:
 
     def _plan_llm(self, pregunta: str) -> dict[str, Any] | None:
         """Pide al modelo un plan JSON y lo valida; nunca pide ni ejecuta SQL."""
+        self._validar_alcance(pregunta)
         if not self.llm_configurado:
             return None
         permitidos = {codigo: meta["title"] for codigo, meta in METRICS.items()}
@@ -319,11 +320,28 @@ class CopilotoNlSql:
             return None
 
     def resolver(self, pregunta: str) -> tuple[dict[str, Any], str]:
-        self._rechazar_pais(pregunta)
+        self._validar_alcance(pregunta)
         plan = self._plan_llm(pregunta)
         if plan is not None:
             return plan, "llm-json-validado"
         return self.parse_local(pregunta), "reglas-locales"
+
+    @staticmethod
+    def _validar_alcance(pregunta: str) -> None:
+        """Rechaza unidades, frecuencias e imperativos fuera del contrato anual.
+
+        Es una guarda léxica explícita, no un clasificador semántico general. Se
+        aplica también antes del modelo para no convertir una solicitud de otro
+        indicador o de escritura en un SELECT aparentemente correcto.
+        """
+        CopilotoNlSql._rechazar_pais(pregunta)
+        q = normalizar(pregunta)
+        if re.search(r"\bper[\s-]*capita\b|\bpor habitante\b", q):
+            raise QuestionError("El catálogo no incluye indicadores por habitante.")
+        if re.search(r"\b(?:trimestral(?:es)?|trimestres?|mensual(?:es)?|semanal(?:es)?|diari[oa]s?)\b", q):
+            raise QuestionError("El snapshot contiene observaciones anuales, no esa frecuencia.")
+        if re.search(r"^\s*(?:(?:por favor|ahora|haz|realiza|ejecuta)\s+)*(?:borra(?:r)?|elimina(?:r)?|actualiza(?:r)?|modifica(?:r)?|sobrescribe|(?:un\s+)?backfill)\b", q):
+            raise QuestionError("Solo se permiten consultas de lectura; no cambios ni backfill.")
 
     # ------------------------------------------------------------------- SQL
     def construir_sql(self, spec: dict[str, Any]) -> tuple[str, list[Any]]:

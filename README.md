@@ -472,10 +472,13 @@ de precios verificada en el repositorio y no se estima sin base.
 
 Límites conocidos: en modo simulado el proveedor es un doble determinista (sus
 cifras no representan al modelo real) y la latencia mide el arnés, no la red. El
-conjunto documenta cuatro casos (`n12`, `n13`, `a09`, `a10`) donde el parser
-léxico asocia el término y devuelve un plan de lectura aunque el contrato diga
-«no soportado»: la evaluación los reporta como falsos soportados; el sistema
-sigue siendo de solo lectura porque solo construye `SELECT`.
+conjunto conserva como regresiones los cuatro errores de alcance conocidos
+(`n12`, `n13`, `a09`, `a10`). Las guardas de unidad, frecuencia e imperativos de
+escritura los rechazan antes de consultar al proveedor. La nueva ejecución del
+conjunto da cero falsos soportados en parser y fallback. Estos casos intervinieron
+en la corrección: son regresiones, no una evaluación independiente de
+generalización. La guarda es léxica y no prueba comprensión semántica general.
+Los resultados históricos versionados conservan las cifras anteriores.
 
 ### Evaluación del briefing de Banxico (recuperación y respuestas)
 
