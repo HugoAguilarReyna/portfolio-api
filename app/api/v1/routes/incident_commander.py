@@ -183,7 +183,12 @@ def run_agent(run_id: str, servicio: IncidentDep) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"detail": str(exc), "traza": exc.traza},
         ) from exc
-    except (agente.AgenteLimitePasos, agente.AgentePresupuesto) as exc:
+    except agente.AgentePresupuesto as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"detail": str(exc), "traza": exc.traza, "motivo": "presupuesto"},
+        ) from exc
+    except agente.AgenteLimitePasos as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         ) from exc

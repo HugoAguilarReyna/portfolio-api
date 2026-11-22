@@ -1,0 +1,137 @@
+{
+  "fecha": "2026-11-22T16:30:23.119029+00:00",
+  "metodo_conteo": "estimacion-chars/3.6",
+  "es_medicion_real": false,
+  "nota": "Sin llamada a OpenAI. Si el método es chars/3.6 es una ESTIMACIÓN, no un conteo del tokenizador del modelo.",
+  "topes": {
+    "contexto_chars": 6000,
+    "resultado_herramienta_chars": 2000,
+    "pasos": 6
+  },
+  "caso_real": {
+    "caso": "contexto-real",
+    "fijo_sistema_y_esquemas": {
+      "chars": 2049,
+      "tokens": 569
+    },
+    "contexto": {
+      "chars": 954,
+      "tokens": 265
+    },
+    "resultado_herramienta": {
+      "chars": 116,
+      "tokens": 32
+    },
+    "pasos": [
+      {
+        "paso": 1,
+        "chars_prompt": 3003,
+        "tokens_prompt": 835,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 835
+      },
+      {
+        "paso": 2,
+        "chars_prompt": 3337,
+        "tokens_prompt": 927,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 1762
+      },
+      {
+        "paso": 3,
+        "chars_prompt": 3671,
+        "tokens_prompt": 1020,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 2782
+      },
+      {
+        "paso": 4,
+        "chars_prompt": 4005,
+        "tokens_prompt": 1112,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 3894
+      },
+      {
+        "paso": 5,
+        "chars_prompt": 4339,
+        "tokens_prompt": 1205,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 5099
+      },
+      {
+        "paso": 6,
+        "chars_prompt": 4673,
+        "tokens_prompt": 1298,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 6397
+      }
+    ],
+    "tokens_prompt_6_pasos": 6397,
+    "tokens_totales_peor_caso": 8197
+  },
+  "caso_peor": {
+    "caso": "contexto-al-tope",
+    "fijo_sistema_y_esquemas": {
+      "chars": 2049,
+      "tokens": 569
+    },
+    "contexto": {
+      "chars": 5058,
+      "tokens": 1405
+    },
+    "resultado_herramienta": {
+      "chars": 2000,
+      "tokens": 556
+    },
+    "pasos": [
+      {
+        "paso": 1,
+        "chars_prompt": 7107,
+        "tokens_prompt": 1975,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 1975
+      },
+      {
+        "paso": 2,
+        "chars_prompt": 9311,
+        "tokens_prompt": 2586,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 4561
+      },
+      {
+        "paso": 3,
+        "chars_prompt": 11515,
+        "tokens_prompt": 3198,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 7759
+      },
+      {
+        "paso": 4,
+        "chars_prompt": 13719,
+        "tokens_prompt": 3811,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 11570
+      },
+      {
+        "paso": 5,
+        "chars_prompt": 15923,
+        "tokens_prompt": 4423,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 15993
+      },
+      {
+        "paso": 6,
+        "chars_prompt": 18127,
+        "tokens_prompt": 5035,
+        "tokens_salida_tope": 300,
+        "acumulado_prompt": 21028
+      }
+    ],
+    "tokens_prompt_6_pasos": 21028,
+    "tokens_totales_peor_caso": 22828
+  },
+  "presupuesto_provisional_sugerido": 23000,
+  "presupuesto_actual": 1800,
+  "max_tokens_dia_sugerido": 230000,
+  "coherencia": true
+}

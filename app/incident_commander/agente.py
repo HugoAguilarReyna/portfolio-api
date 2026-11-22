@@ -35,7 +35,15 @@ class AgenteLimitePasos(RuntimeError):
 
 
 class AgentePresupuesto(RuntimeError):
-    """Se agotó el presupuesto de tokens del agente."""
+    """Se agotó el presupuesto de tokens del agente.
+
+    Lleva la traza parcial para que la interfaz muestre lo que sí se hizo
+    antes de cerrar: el visitante ya gastó su cupo y no debe quedarse a ciegas.
+    """
+
+    def __init__(self, mensaje: str, *, traza: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(mensaje)
+        self.traza = list(traza or [])
 
 
 class AgentePolitica(RuntimeError):
@@ -44,6 +52,29 @@ class AgentePolitica(RuntimeError):
     def __init__(self, mensaje: str, *, traza: list[dict[str, Any]]) -> None:
         super().__init__(mensaje)
         self.traza = traza
+
+
+#: Estimación de tokens por carácter usada para el cierre ordenado. Es una
+#: cota conservadora (el tokenizador real suele dar menos); se recalcula con el
+#: uso que reporta el proveedor después de cada paso.
+CHARS_POR_TOKEN = 3.6
+
+
+def _estimar_tokens(
+    mensajes: list[dict[str, Any]], salida_tope: int, fijo_chars: int = 0
+) -> int:
+    """Estimación del coste del siguiente paso: historial completo + salida tope."""
+    # `fijo_chars` son los esquemas de herramientas: viajan en cada petición y no
+    # están dentro de `mensajes`, así que también cuentan para el siguiente paso.
+    caracteres = int(fijo_chars)
+    for mensaje in mensajes:
+        contenido = mensaje.get("content")
+        if isinstance(contenido, str):
+            caracteres += len(contenido)
+        llamadas = mensaje.get("tool_calls")
+        if llamadas:
+            caracteres += len(json.dumps(llamadas, ensure_ascii=False))
+    return int(round(caracteres / CHARS_POR_TOKEN)) + int(salida_tope)
 
 
 def _traza_paso(paso: int, tipo: str, **datos: Any) -> dict[str, Any]:
@@ -89,8 +120,20 @@ def ejecutar(
     consumido = 0
     intentos_salida = 0
 
+    esquemas_chars = len(json.dumps(catalogo.esquemas(), ensure_ascii=False))
+
     with contexto_llm.reserva_de_run():
         for paso in range(1, pasos_maximos + 1):
+            # Cierre ordenado: si el siguiente paso ya no cabe en el presupuesto,
+            # no se hace otra llamada y se devuelve la traza parcial.
+            salida_tope = min(int(settings.llm_max_tokens), 300)
+            if consumido + _estimar_tokens(mensajes, salida_tope, esquemas_chars) > presupuesto:
+                traza.append(_traza_paso(paso, "presupuesto"))
+                raise AgentePresupuesto(
+                    "El agente alcanzó su presupuesto de tokens; se devuelve la traza "
+                    "parcial sin hacer otra llamada.",
+                    traza=traza,
+                )
             sobre = cliente.solicitar_chat(
                 settings,
                 mensajes,
@@ -101,8 +144,10 @@ def ejecutar(
             if uso and isinstance(uso.get("total_tokens"), int):
                 consumido += int(uso["total_tokens"])
             if consumido > presupuesto:
+                traza.append(_traza_paso(paso, "presupuesto"))
                 raise AgentePresupuesto(
-                    "El agente agotó su presupuesto de tokens sin cerrar la consulta."
+                    "El agente agotó su presupuesto de tokens sin cerrar la consulta.",
+                    traza=traza,
                 )
 
             respuesta = cliente.mensaje(sobre)

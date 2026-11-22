@@ -101,7 +101,7 @@ def ajustes(**extra) -> Settings:
         "llm_max_solicitudes_dia": 10,
         "llm_max_tokens_dia": 100_000,
         "llm_intervalo_minimo_s": 600,
-        "llm_agente_presupuesto_tokens": 1_800,
+        "llm_agente_presupuesto_tokens": 23000,
         "llm_agente_max_pasos": 6,
     }
     base.update(extra)
@@ -193,7 +193,7 @@ def test_un_run_de_tres_pasos_completa_con_cupo_diario_uno(almacen, monkeypatch)
     assert resultado["recomendacion"]["plan"] == "quarantine"
     # Una sola reserva: 1 solicitud del cupo por IP y del global, con el
     # presupuesto completo del run (1800), no 300 por paso.
-    assert totales(almacen) == (1, 1_800)
+    assert totales(almacen) == (1, 23000)
     claves = [clave for clave in almacen.documentos if clave.startswith("ip:")]
     assert len(claves) == 1
     assert almacen.documentos[claves[0]]["n"] == 1
