@@ -49,6 +49,7 @@ from app.db.mongo import (
     MARKETING_IMPORTACIONES,
     MARKETING_RESUMEN,
     MARKETING_USUARIOS,
+    METRICAS_VISITAS,
 )
 
 logger = logging.getLogger(__name__)
@@ -355,6 +356,15 @@ INDEX_SPECS: list[tuple[str, str, list[tuple[str, int]], dict]] = [
             ("clave", ASCENDING),
         ],
         {},
+    ),
+    # --- Telemetría anónima -------------------------------------------------
+    # Las huellas diarias se borran solas a las 48 h. El documento `_id: global`
+    # no tiene `expira_en`, así que el TTL nunca lo elimina.
+    (
+        METRICAS_VISITAS,
+        "metricas_visitas_ttl",
+        [("expira_en", ASCENDING)],
+        {"expireAfterSeconds": 0},
     ),
 ]
 

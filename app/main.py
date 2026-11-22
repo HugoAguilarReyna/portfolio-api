@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
 from app.api.v1.router import api_router
+from app.routers import visitas
 from app.config import Settings, get_settings
 from app.db.indexes import ensure_indexes
 from app.db.mongo import close_database, init_database
@@ -279,6 +280,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+    # Telemetría anónima del portafolio (contadores y ranking de proyectos).
+    app.include_router(visitas.router, prefix=settings.api_v1_prefix)
 
     @app.get("/", tags=["Salud"], summary="Índice de la API")
     def root() -> dict:
