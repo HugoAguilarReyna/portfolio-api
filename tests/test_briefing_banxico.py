@@ -17,6 +17,14 @@ class FakeDatabase:
     client = None
 
 
+@pytest.fixture(autouse=True)
+def ventana_llm_aislada():
+    """Cada prueba evalúa su contrato sin heredar el cupo de otra prueba."""
+    cliente.VENTANA.reiniciar()
+    yield
+    cliente.VENTANA.reiniciar()
+
+
 def servicio(**overrides) -> BriefingBanxico:
     valores = {
         "rag_banxico_corpus_path": str(

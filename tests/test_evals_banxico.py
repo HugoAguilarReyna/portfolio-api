@@ -17,6 +17,13 @@ from app.rag_banxico.service import BriefingBanxico
 RAIZ = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def ventana_llm_aislada():
+    cliente.VENTANA.reiniciar()
+    yield
+    cliente.VENTANA.reiniciar()
+
+
 class DbFalsa:
     ping = False
     client = None
