@@ -39,7 +39,11 @@ conciliación de cada migración, en los documentos de cada tablero.
 > el briefing responde de forma extractiva y el copiloto usa solo su parser local.
 > El briefing usa `portfolio_demos.rag_banxico_chunks`; instrucciones en
 > [`banxico-evidence-briefing`](https://github.com/Dev-HugoAguilar/banxico-evidence-briefing).
-> Data Incident Commander es determinista y no llama a ningún modelo.
+> Data Incident Commander es determinista y, por omisión, no llama a ningún modelo.
+> Opcionalmente puede pedir una **segunda opinión consultiva** a un proveedor
+> compatible con OpenAI (LLM_BASE_URL, LLM_MODEL, LLM_API_KEY): valida el JSON,
+> admite solo quarantine, ackfill y ullreload —orward sigue bloqueado— y
+> nunca aprueba ni ejecuta. Sin las tres variables, esa ruta responde 503.
 
 > El dataset sintético (`demo_rentabilidad_2024_2025`) **se archivó fuera del
 > clúster** (`data/ventas/sales.jsonl.gz`): el sitio publicado no lo consulta y sus
@@ -286,6 +290,7 @@ python -m scripts.verificar_cnbv     # 56.248 hechos conciliados, 0 discrepancia
 | GET | `/api/v1/incident-commander/snapshot` | Metadatos de las 21 observaciones |
 | POST | `/api/v1/incident-commander/runs` | Inicia un escenario en copia temporal |
 | POST | `/api/v1/incident-commander/runs/{run_id}/approve` | Rechaza o simula una reparación |
+| POST | `/api/v1/incident-commander/runs/{run_id}/analysis` | Segunda opinión consultiva del modelo (no aprueba ni ejecuta) |
 
 Contratos: `docs/CNBV-COMPARATIVO-BANCARIO.md` (documento interno del monorepo, no publicado)
 (datos reales) y [`docs/API-DASHBOARD-RENTABILIDAD.md`(documento interno del monorepo, no publicado)

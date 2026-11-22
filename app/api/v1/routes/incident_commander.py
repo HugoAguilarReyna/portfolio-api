@@ -1,8 +1,13 @@
 """API local de «Data Incident Commander».
 
-Los runs viven solo en memoria del proceso. No hay LLM, Atlas, archivos de
-salida ni escrituras externas: la aprobación simula una reparación sobre una
-copia temporal y devuelve un recibo local.
+Los runs viven solo en memoria del proceso. No hay Atlas, archivos de salida ni
+escrituras externas: la aprobación simula una reparación sobre una copia temporal
+y devuelve un recibo local.
+
+La consulta a un proveedor compatible con OpenAI (`LLM_BASE_URL`, `LLM_MODEL`,
+`LLM_API_KEY`) es **opcional y consultiva**: devuelve una recomendación validada
+entre `quarantine`, `backfill` y `fullreload` —`forward` sigue bloqueado— y nunca
+aprueba, ejecuta ni cambia el estado del run.
 """
 
 from __future__ import annotations
@@ -16,6 +21,9 @@ from pydantic import BaseModel, Field
 from app.config import Settings
 from app.incident_commander.service import (
     IncidentCommander,
+    LlmNoConfigurado,
+    LlmRespuestaInvalida,
+    LlmUpstreamError,
     PlanBlocked,
     RunConflict,
     RunNotFound,
@@ -99,5 +107,32 @@ def approve_run(run_id: str, body: ApprovalRequest, servicio: IncidentDep) -> di
     except PlanBlocked as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/runs/{run_id}/analysis",
+    summary="Consulta consultiva al proveedor compatible con OpenAI",
+)
+def analyse_run(run_id: str, servicio: IncidentDep) -> dict:
+    """Devuelve una recomendación validada; nunca aprueba ni ejecuta."""
+    try:
+        return servicio.analizar(run_id)
+    except RunNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except LlmNoConfigurado as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except LlmUpstreamError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except LlmRespuestaInvalida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
