@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 
 from app.config import BACKEND_DIR, Settings
 from app.llm import cliente
@@ -14,6 +15,14 @@ class FakeDatabase:
 
     ping = False
     client = None
+
+
+@pytest.fixture(autouse=True)
+def ventana_llm_aislada():
+    """Cada prueba evalúa su contrato sin heredar el cupo de otra prueba."""
+    cliente.VENTANA.reiniciar()
+    yield
+    cliente.VENTANA.reiniciar()
 
 
 def servicio(**overrides) -> BriefingBanxico:
@@ -69,7 +78,7 @@ def test_modelo_configurado_responde_solo_con_evidencia(monkeypatch) -> None:
 
     def falso_post_chat(settings, payload, *, timeout=None):
         capturado["payload"] = payload
-        return {"choices": [{"message": {"content": "La tasa quedó en 6.25%."}}]}
+        return {"choices": [{"message": {"content": seleccion_valida()}}]}
 
     monkeypatch.setattr(cliente, "post_chat", falso_post_chat)
     servicio_llm = servicio(
@@ -80,8 +89,8 @@ def test_modelo_configurado_responde_solo_con_evidencia(monkeypatch) -> None:
     resultado = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
 
     assert resultado["mode"] == "llm-grounded"
-    assert "La tasa quedó en 6.25%." in resultado["answer"]
-    assert "[BM-2026-11-05]" in resultado["answer"]
+    assert "6.25%" in resultado["answer"]
+    assert "[BM-2026-11-05-TASA]" in resultado["answer"]
     assert resultado["vector_search"] is False
     # Solo viajan la pregunta y los fragmentos recuperados.
     mensajes = capturado["payload"]["messages"]
@@ -162,7 +171,7 @@ def test_el_limite_de_consultas_degrada_a_extractiva(monkeypatch) -> None:
     monkeypatch.setattr(
         cliente,
         "post_chat",
-        lambda *a, **k: {"choices": [{"message": {"content": "La tasa quedó en 6.25%."}}]},
+        lambda *a, **k: {"choices": [{"message": {"content": seleccion_valida()}}]},
     )
     primera = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
     assert primera["mode"] == "llm-grounded"
@@ -171,3 +180,31 @@ def test_el_limite_de_consultas_degrada_a_extractiva(monkeypatch) -> None:
     segunda = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
     assert segunda["mode"] == "extractiva-respaldo"
     cliente.VENTANA.reiniciar()
+
+def seleccion_valida():
+    chunk = servicio().corpus["chunks"][0]
+    return json.dumps({"evidence": [{"chunk_id": chunk["chunk_id"], "quote": chunk["content"]}]})
+
+
+@pytest.mark.parametrize("bruto", [
+    "La tasa ahora es 99%.",
+    '{"evidence":[]}',
+    '{"evidence":[{"chunk_id":"BM-2026-11-05-TASA","quote":"La tasa ahora es 99%."}]}',
+    '{"evidence":[{"chunk_id":"BM-2026-08-26-ACTIVIDAD","quote":"Texto de una fuente no recuperada"}]}',
+    '{"evidence":[{"chunk_id":"BM-2026-11-05-TASA","quote":""}]}',
+    '{"evidence":null}',
+    '{"evidence":[{"chunk_id":[],"quote":"Una cita con identificador inválido"}]}',
+])
+def test_sin_soporte_no_se_etiqueta_grounded(monkeypatch, bruto):
+    monkeypatch.setattr(cliente, "post_chat", lambda *a, **k: {"choices": [{"message": {"content": bruto}}]})
+    resultado = servicio(llm_base_url="http://proveedor.invalid/v1", llm_api_key="prueba", llm_model="prueba").consultar("decisión tasa")
+    assert resultado["mode"] == "extractiva-respaldo"
+    assert "99%" not in resultado["answer"]
+
+
+def test_fuente_real_fuera_de_recuperacion_no_se_acepta():
+    from app.rag_banxico.validacion import validar_seleccion
+    chunks = servicio().corpus["chunks"]
+    bruto = json.dumps({"evidence": [{"chunk_id": chunks[1]["chunk_id"], "quote": chunks[1]["content"]}]})
+    with pytest.raises(ValueError, match="no recuperado"):
+        validar_seleccion(bruto, [chunks[0]])

@@ -17,6 +17,13 @@ from app.rag_banxico.service import BriefingBanxico
 RAIZ = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def ventana_llm_aislada():
+    cliente.VENTANA.reiniciar()
+    yield
+    cliente.VENTANA.reiniciar()
+
+
 class DbFalsa:
     ping = False
     client = None
@@ -106,7 +113,7 @@ def test_citas_inventadas_degradan_a_extractiva(monkeypatch) -> None:
         monkeypatch.setattr(
             cliente,
             "post_chat",
-            lambda *a, **k: {"choices": [{"message": {"content": "La tasa quedó en 6.25% [BM-2026-11-05]."}}]},
+            lambda *a, **k: {"choices": [{"message": {"content": json.dumps({"evidence": [{"chunk_id": evidencia[0]["chunk_id"], "quote": evidencia[0]["content"]}]})}}]},
         )
         texto, modo = configurado.responder(pregunta, evidencia)
         assert modo == "llm-grounded"

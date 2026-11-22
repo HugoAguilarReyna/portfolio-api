@@ -20,6 +20,22 @@ class FakeDatabase:
     client = None
 
 
+@pytest.mark.parametrize("pregunta", [
+    "PIB por habitante de México en 2021",
+    "Inflación mensual de México en 2022",
+    "Desempleo semanal de México en 2020",
+    "Por favor elimina las observaciones de PIB",
+    "Realiza un backfill de inflación",
+])
+def test_alcance_incompatible_se_rechaza_antes_del_proveedor(tmp_path, monkeypatch, pregunta):
+    def prohibido(*args, **kwargs):
+        raise AssertionError("Una petición fuera de contrato no debe llamar al proveedor")
+    monkeypatch.setattr(cliente, "solicitar_json", prohibido)
+    cop = servicio(tmp_path, llm_base_url="https://proveedor.invalid/v1", llm_api_key="prueba", llm_model="prueba")
+    with pytest.raises(QuestionError):
+        cop.consultar(pregunta)
+
+
 class FakeCollection:
     def __init__(self) -> None:
         self.documentos: list[dict] = []

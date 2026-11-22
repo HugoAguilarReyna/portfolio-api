@@ -134,8 +134,9 @@ def evaluar_citas_simuladas(_servicio_base: BriefingBanxico) -> dict[str, Any]:
     try:
         pregunta = "¿A cuánto quedó la tasa objetivo?"
         evidencia = servicio.recuperar(pregunta)[0]
-        primera = evidencia[0]["source_id"] if evidencia else "BM-2026-11-05"
-        cliente.post_chat = respuesta_con(f"La tasa quedó en 6.25% [{primera}].")
+        primera = evidencia[0]["chunk_id"]
+        seleccion = json.dumps({"evidence": [{"chunk_id": primera, "quote": evidencia[0]["content"]}]})
+        cliente.post_chat = respuesta_con(seleccion)
         texto, modo = servicio.responder(pregunta, evidencia)
         resultados["cita_valida"] = {"modo": modo, "menciona_fuente": primera in texto}
 
@@ -183,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
         "ejecucion": {
             "fecha": datetime.now(timezone.utc).isoformat(),
             "modo": "simulado",
+            "grounding_contract": "verbatim-retrieved-chunks",
             "proveedor_real": False,
             "modelo": "sin-modelo (extractiva + simulado)",
             "vectores_reales": bool(vectores),

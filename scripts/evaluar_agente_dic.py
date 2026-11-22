@@ -9,6 +9,7 @@ arnés y el contrato, no el modelo real.
 from __future__ import annotations
 
 import json
+import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,7 +75,10 @@ class ProveedorGuiado:
         }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--salida', type=Path, default=None, help='JSON de resultados simulados')
+    args = parser.parse_args(argv)
     incidentes = evals.cargar_incidentes()
     settings = Settings(
         _env_file=None,
@@ -168,7 +172,7 @@ def main() -> int:
         ],
         "costo": {"usd": "no calculable", "motivo": "proveedor simulado; sin tabla de precios"},
     }
-    destino = evals.RESULTADOS / f"agente-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-simulado.json"
+    destino = args.salida or (evals.RESULTADOS / f"agente-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-simulado.json")
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
     for clave, valor in metricas.items():

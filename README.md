@@ -472,10 +472,13 @@ de precios verificada en el repositorio y no se estima sin base.
 
 Límites conocidos: en modo simulado el proveedor es un doble determinista (sus
 cifras no representan al modelo real) y la latencia mide el arnés, no la red. El
-conjunto documenta cuatro casos (`n12`, `n13`, `a09`, `a10`) donde el parser
-léxico asocia el término y devuelve un plan de lectura aunque el contrato diga
-«no soportado»: la evaluación los reporta como falsos soportados; el sistema
-sigue siendo de solo lectura porque solo construye `SELECT`.
+conjunto conserva como regresiones los cuatro errores de alcance conocidos
+(`n12`, `n13`, `a09`, `a10`). Las guardas de unidad, frecuencia e imperativos de
+escritura los rechazan antes de consultar al proveedor. La nueva ejecución del
+conjunto da cero falsos soportados en parser y fallback. Estos casos intervinieron
+en la corrección: son regresiones, no una evaluación independiente de
+generalización. La guarda es léxica y no prueba comprensión semántica general.
+Los resultados históricos versionados conservan las cifras anteriores.
 
 ### Evaluación del briefing de Banxico (recuperación y respuestas)
 
@@ -553,3 +556,14 @@ herramientas esperadas y el plan esperado. Resultado simulado del 2026-11-22:
 2.9 pasos de media, 2 violaciones de política bloqueadas y **0 escrituras**; el
 baseline determinista resuelve 12/12. Son cifras del doble simulado, **no** del
 modelo real; no hay coste en USD calculable.
+
+
+## Contrato de evidencia del briefing
+
+El modo `llm-grounded` acepta únicamente JSON con una lista `evidence` de
+`chunk_id` y `quote`. Cada cita debe ser literal y pertenecer a un fragmento
+realmente enviado al modelo. La respuesta pública se construye con esas citas;
+no se añaden referencias a prosa libre para hacerla pasar por verificada.
+Una selección vacía o inválida cae al respaldo extractivo. El contrato comprueba
+identidad y procedencia, no relevancia ni suficiencia para contestar la pregunta.
+Las pruebas usan un proveedor simulado; no certifican calidad de un modelo real.
