@@ -1,0 +1,32 @@
+{"id": "b01", "categoria": "tasa", "pregunta": "¿A cuánto quedó la tasa objetivo después del recorte?", "relevantes": ["BM-2026-11-05-TASA"]}
+{"id": "b02", "categoria": "tasa", "pregunta": "¿Cuántos puntos base recortó la Junta de Gobierno?", "relevantes": ["BM-2026-11-05-TASA"]}
+{"id": "b03", "categoria": "tasa", "pregunta": "¿Cuándo entró en vigor la nueva tasa?", "relevantes": ["BM-2026-11-05-TASA"]}
+{"id": "b04", "categoria": "tasa", "pregunta": "¿Qué decidió la Junta el 5 de noviembre de 2026?", "relevantes": ["BM-2026-11-05-TASA"]}
+{"id": "b05", "categoria": "inflacion", "pregunta": "¿Cómo cambió la inflación general entre septiembre y octubre?", "relevantes": ["BM-2026-11-05-INFLACION"]}
+{"id": "b06", "categoria": "inflacion", "pregunta": "¿Cuánto fue la inflación subyacente en la primera quincena de octubre?", "relevantes": ["BM-2026-11-05-INFLACION"]}
+{"id": "b07", "categoria": "inflacion", "pregunta": "¿Bajó la inflación subyacente en ese mismo intervalo?", "relevantes": ["BM-2026-11-05-INFLACION"]}
+{"id": "b08", "categoria": "inflacion", "pregunta": "¿Cuál era la inflación general en la primera quincena de septiembre?", "relevantes": ["BM-2026-11-05-INFLACION"]}
+{"id": "b09", "categoria": "inflacion", "pregunta": "¿Cómo se comparan la inflación general y la subyacente en octubre?", "relevantes": ["BM-2026-11-05-INFLACION"]}
+{"id": "b10", "categoria": "riesgos", "pregunta": "¿Qué riesgos al alza identifica el comunicado?", "relevantes": ["BM-2026-11-05-RIESGOS"]}
+{"id": "b11", "categoria": "riesgos", "pregunta": "¿El comunicado menciona la depreciación del peso?", "relevantes": ["BM-2026-11-05-RIESGOS"]}
+{"id": "b12", "categoria": "riesgos", "pregunta": "¿Cuáles son los riesgos a la baja para la inflación?", "relevantes": ["BM-2026-11-05-RIESGOS"]}
+{"id": "b13", "categoria": "riesgos", "pregunta": "¿Aparecen riesgos climáticos o de costos?", "relevantes": ["BM-2026-11-05-RIESGOS"]}
+{"id": "b14", "categoria": "pronostico", "pregunta": "¿Cuál es el pronóstico de inflación para el tercer trimestre de 2026?", "relevantes": ["BM-2026-11-05-PRONOSTICO"]}
+{"id": "b15", "categoria": "pronostico", "pregunta": "¿Cuánto se espera de inflación en el cuarto trimestre de 2026?", "relevantes": ["BM-2026-11-05-PRONOSTICO"]}
+{"id": "b16", "categoria": "pronostico", "pregunta": "¿Para cuándo anticipa Banxico la convergencia a la meta?", "relevantes": ["BM-2026-11-05-PRONOSTICO", "BM-2026-08-26-META"]}
+{"id": "b17", "categoria": "pronostico", "pregunta": "¿Qué inflación se prevé para el cuarto trimestre de 2027?", "relevantes": ["BM-2026-11-05-PRONOSTICO"]}
+{"id": "b18", "categoria": "pronostico", "pregunta": "¿El pronóstico cumple la meta de 3% en 2026?", "relevantes": ["BM-2026-11-05-PRONOSTICO", "BM-2026-08-26-META"]}
+{"id": "b19", "categoria": "inflacion", "pregunta": "¿Cómo pasó la inflación general del primer al segundo trimestre de 2026?", "relevantes": ["BM-2026-08-26-INFLACION-TRIMESTRAL"]}
+{"id": "b20", "categoria": "inflacion", "pregunta": "¿Cuánto fue la inflación subyacente en el primer trimestre de 2026?", "relevantes": ["BM-2026-08-26-INFLACION-TRIMESTRAL"]}
+{"id": "b21", "categoria": "inflacion", "pregunta": "¿Bajó la subyacente entre el primer y el segundo trimestre?", "relevantes": ["BM-2026-08-26-INFLACION-TRIMESTRAL"]}
+{"id": "b22", "categoria": "inflacion", "pregunta": "¿Qué inflación general se registró en el segundo trimestre de 2026?", "relevantes": ["BM-2026-08-26-INFLACION-TRIMESTRAL"]}
+{"id": "b23", "categoria": "actividad", "pregunta": "¿Cuál es la meta de inflación del Banco de México?", "relevantes": ["BM-2026-08-26-META"]}
+{"id": "b24", "categoria": "actividad", "pregunta": "¿Cuándo se esperaba alcanzar la meta de 3% según el informe?", "relevantes": ["BM-2026-08-26-META", "BM-2026-11-05-PRONOSTICO"]}
+{"id": "b25", "categoria": "actividad", "pregunta": "¿Cómo se comportó el PIB mexicano en el segundo trimestre de 2026?", "relevantes": ["BM-2026-08-26-ACTIVIDAD"]}
+{"id": "b26", "categoria": "actividad", "pregunta": "¿Qué pasó con el PIB en el trimestre previo al repunte?", "relevantes": ["BM-2026-08-26-ACTIVIDAD"]}
+{"id": "b27", "categoria": "actividad", "pregunta": "¿Qué actividades contribuyeron al repunte del PIB?", "relevantes": ["BM-2026-08-26-ACTIVIDAD"]}
+{"id": "b28", "categoria": "actividad", "pregunta": "¿El informe menciona una contracción previa de la actividad?", "relevantes": ["BM-2026-08-26-ACTIVIDAD"]}
+{"id": "b29", "categoria": "sin_respaldo", "pregunta": "¿Cuál es el capital de Francia?", "relevantes": []}
+{"id": "b30", "categoria": "sin_respaldo", "pregunta": "¿Quién ganó la final del mundial de 2026?", "relevantes": []}
+{"id": "b31", "categoria": "sin_respaldo", "pregunta": "¿Cuál será el tipo de cambio peso dólar al cierre de 2027?", "relevantes": []}
+{"id": "b32", "categoria": "sin_respaldo", "pregunta": "¿Cuántos empleos creó el sector manufacturero en 2026?", "relevantes": []}

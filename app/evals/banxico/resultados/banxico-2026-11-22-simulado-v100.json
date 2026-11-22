@@ -1,0 +1,91 @@
+{
+  "conjunto": {
+    "version": "1.0.0",
+    "ruta": "app/evals/banxico/preguntas.jsonl",
+    "preguntas": 32,
+    "sintetico": true
+  },
+  "corpus": {
+    "chunks": 7,
+    "fuentes": [
+      "BM-2026-08-26",
+      "BM-2026-11-05"
+    ],
+    "ampliado_en_esta_fase": false,
+    "motivo": "no se añadieron publicaciones nuevas: no es posible verificar en línea la procedencia de nuevos documentos oficiales desde este entorno"
+  },
+  "ejecucion": {
+    "fecha": "2026-11-22T03:42:48.857382+00:00",
+    "modo": "simulado",
+    "proveedor_real": false,
+    "modelo": "sin-modelo (extractiva + simulado)",
+    "vectores_reales": false
+  },
+  "recuperacion": {
+    "lexica": {
+      "metricas": {
+        "preguntas": 32,
+        "con_respaldo": 28,
+        "sin_respaldo": 4,
+        "recall@3": 1.0,
+        "mrr": 0.9464,
+        "abstencion_correcta": 0.25
+      },
+      "fallos_recall": []
+    },
+    "embeddings-locales": {
+      "metricas": {
+        "preguntas": 32,
+        "con_respaldo": 28,
+        "sin_respaldo": 4,
+        "recall@3": 1.0,
+        "mrr": 0.9286,
+        "abstencion_correcta": 0.5
+      },
+      "fallos_recall": []
+    },
+    "hibrida": {
+      "metricas": {
+        "preguntas": 32,
+        "con_respaldo": 28,
+        "sin_respaldo": 4,
+        "recall@3": 1.0,
+        "mrr": 0.9464,
+        "abstencion_correcta": 0.25
+      },
+      "fallos_recall": []
+    }
+  },
+  "respuestas": {
+    "extractiva": {
+      "respuestas_con_evidencia": 28,
+      "citas_en_evidencia": true,
+      "abstencion_en_sin_respaldo": 0.25,
+      "modos": [
+        "extractiva",
+        "sin-coincidencias"
+      ]
+    },
+    "citas_inventadas_bloqueadas": true,
+    "proveedor_simulado": {
+      "cita_valida": {
+        "modo": "llm-grounded",
+        "menciona_fuente": true
+      },
+      "cita_inventada": {
+        "modo": "extractiva-respaldo",
+        "cita_en_evidencia": false
+      }
+    }
+  },
+  "costo": {
+    "usd": "no calculable",
+    "motivo": "no se hizo ninguna llamada al proveedor; no hay precios verificados en el repositorio"
+  },
+  "notas": [
+    "Conjunto sintético de 32 preguntas; los fragmentos relevantes están marcados a mano.",
+    "`embeddings-locales` es una bolsa de términos ponderada con NumPy, no un modelo de embeddings.",
+    "`embeddings-openai` requiere generar y versionar vectores con el comando explícito; no se ejecutó.",
+    "La recuperación léxica sigue siendo el baseline y el fallback."
+  ]
+}

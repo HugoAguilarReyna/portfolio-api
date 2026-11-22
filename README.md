@@ -476,3 +476,41 @@ conjunto documenta cuatro casos (`n12`, `n13`, `a09`, `a10`) donde el parser
 léxico asocia el término y devuelve un plan de lectura aunque el contrato diga
 «no soportado»: la evaluación los reporta como falsos soportados; el sistema
 sigue siendo de solo lectura porque solo construye `SELECT`.
+
+### Evaluación del briefing de Banxico (recuperación y respuestas)
+
+Conjunto sintético de 32 preguntas con el fragmento relevante marcado
+(`app/evals/banxico/preguntas.jsonl`), sobre el corpus real versionado (7
+fragmentos de 2 publicaciones oficiales del Banco de México).
+
+```bash
+python scripts/evaluar_banxico.py     # simulado: sin red y sin coste
+```
+
+Compara tres modos de recuperación y mide `recall@3` y MRR; además evalúa las
+respuestas: citas verificables contra el corpus y abstención cuando no hay
+respaldo.
+
+| Modo | Qué es |
+|---|---|
+| `lexica` | Baseline actual (`puntuar`): coincidencia de términos, sin embeddings |
+| `embeddings-locales` | Bolsa de términos ponderada (TF, L2) con NumPy y coseno — **no** es un modelo de embeddings |
+| `hibrida` | Mezcla lineal 0.5 · léxica normalizada + 0.5 · coseno |
+
+Resultado medido (simulado, 2026-11-22): los tres modos alcanzan `recall@3 = 1.0`
+en las 28 preguntas con respaldo; el léxico obtiene MRR 0.9464 y la variante de
+embeddings locales 0.9286. **No se afirma que los embeddings mejoren** la
+recuperación: con este corpus, la señal léxica es igual o mejor. La abstención
+sin respaldo depende del umbral (coseno ≥ 0.20; híbrido ≥ 0.25), fijado a priori.
+
+Vectores reales: `scripts/generar_embeddings_banxico.py --modelo text-embedding-3-small`
+llama al proveedor de embeddings, **genera cargos**, exige
+`PORTFOLIO_EVAL_LIVE=1` y escribe `app/evals/banxico/vectores-banxico.json`. No se
+ejecutó ni se versionaron vectores; antes de hacerlo revisa formato, tamaño y
+conveniencia de publicarlos.
+
+El corpus **no se amplió** en esta fase: no es posible verificar en línea la
+procedencia de nuevas publicaciones oficiales desde este entorno. Para añadir un
+fragmento, incluye `chunk_id`, `source_id`, `heading`, `content` y la fuente en
+`corpus.json/sources` con `title`, `date`, `kind` y `url` oficial; sin esa
+procedencia verificable no debe añadirse.
