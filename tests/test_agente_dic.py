@@ -38,7 +38,7 @@ def _sin_cuotas(monkeypatch):
     from app.llm import limites
 
     monkeypatch.setattr(
-        limites, "reservar_llamada", lambda settings, *, ip=None: {"visitante_del_dia": 1}
+        limites, "reservar_llamada", lambda settings, *, ip=None, costo_tokens=None: {"visitante_del_dia": 1}
     )
 
 

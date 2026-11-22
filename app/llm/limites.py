@@ -166,7 +166,7 @@ class Limitador:
         valor = documento.get("ultima")
         return int(valor) if isinstance(valor, int) else None
 
-    def reservar(self, *, ip: str) -> dict[str, int]:
+    def reservar(self, *, ip: str, costo_tokens: int | None = None) -> dict[str, int]:
         """Reserva una consulta; lanza `CuotaExcedida` si no hay cupo.
 
         Orden: intervalo mínimo del visitante, cupo diario por IP, cupo global de
@@ -196,7 +196,9 @@ class Limitador:
                 reintentar_en=_segundos_hasta_medianoche_utc(),
             )
 
-        costo = int(self.settings.llm_max_tokens)
+        costo = int(
+            costo_tokens if costo_tokens is not None else self.settings.llm_max_tokens
+        )
         global_dia = self._incrementar(
             f"total:{dia}", campos={"n": 1, "tokens": costo}, conjunto=None
         )
@@ -225,6 +227,7 @@ class Limitador:
             "maximo_tokens_dia": int(self.settings.llm_max_tokens_dia),
             "intervalo_minimo_s": int(self.settings.llm_intervalo_minimo_s),
             "tokens_por_consulta": int(self.settings.llm_max_tokens),
+            "tokens_por_run_agente": int(self.settings.llm_agente_presupuesto_tokens),
             "dia_utc": dia,
         }
 
@@ -233,8 +236,14 @@ def limitador_para(db: Any, settings: Settings) -> Limitador:
     return Limitador(db, settings)
 
 
-def reservar_llamada(settings: Settings, *, ip: str | None) -> dict[str, int]:
-    """Punto único de reserva, invocado por el cliente antes de cada llamada."""
+def reservar_llamada(
+    settings: Settings, *, ip: str | None, costo_tokens: int | None = None
+) -> dict[str, int]:
+    """Punto único de reserva, invocado por el cliente antes de cada llamada.
+
+    `costo_tokens` permite reservar el presupuesto real de una operación (por
+    ejemplo el run completo del agente) en lugar del techo de una sola consulta.
+    """
     clave_hmac(settings)  # falla cerrado si no hay clave configurada
     from app.db.mongo import get_database
 
@@ -244,7 +253,9 @@ def reservar_llamada(settings: Settings, *, ip: str | None) -> dict[str, int]:
         raise LimitesNoDisponibles(
             "No se pudo comprobar la cuota de consultas; inténtalo más tarde."
         ) from exc
-    return limitador_para(base, settings).reservar(ip=ip or "desconocida")
+    return limitador_para(base, settings).reservar(
+        ip=ip or "desconocida", costo_tokens=costo_tokens
+    )
 
 
 def asegurar_indices(db: Any, settings: Settings) -> None:
@@ -254,3 +265,17 @@ def asegurar_indices(db: Any, settings: Settings) -> None:
         )
     except PyMongoError:
         return
+
+
+def reservar_run(settings: Settings, *, ip: str | None) -> dict[str, int]:
+    """Reserva única del run del agente: 1 solicitud y su presupuesto de tokens.
+
+    El bucle de hasta 6 pasos no vuelve a reservar (`contexto.reserva_de_run`),
+    así que un run consume una sola solicitud del cupo diario por IP y del cupo
+    global, y reserva el presupuesto completo de tokens del run.
+    """
+    return reservar_llamada(
+        settings,
+        ip=ip,
+        costo_tokens=int(settings.llm_agente_presupuesto_tokens),
+    )

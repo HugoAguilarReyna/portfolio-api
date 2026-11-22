@@ -119,7 +119,11 @@ def post_chat(
     se puede hacer, no se llama al proveedor: falla cerrado.
     """
     # Reserva atómica del cupo antes de gastar: si no hay cupo, no hay llamada.
-    limites.reservar_llamada(settings, ip=contexto.ip_actual())
+    # Dentro de un run del agente el cupo ya se reservó una sola vez al empezar,
+    # así que los pasos del bucle no consumen cupo adicional ni chocan con el
+    # intervalo mínimo. Fuera de un run, cada llamada reserva por sí misma.
+    if not contexto.reserva_activa():
+        limites.reservar_llamada(settings, ip=contexto.ip_actual())
 
     # Ningún llamador puede superar el tope configurado de salida.
     tope = int(settings.llm_max_tokens)

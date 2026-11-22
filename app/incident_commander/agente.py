@@ -15,6 +15,8 @@ from app.config import Settings
 from app.incident_commander import herramientas as catalogo
 from app.incident_commander import service as dic
 from app.llm import cliente
+from app.llm import contexto as contexto_llm
+from app.llm import limites as limites_llm
 
 SISTEMA = (
     "Eres un agente de diagnóstico de calidad de datos. Tienes herramientas de "
@@ -73,101 +75,111 @@ def ejecutar(
             "La consulta a OpenAI no está configurada en este despliegue."
         )
 
-    contexto = servicio._contexto_consulta(run)
+    # Una sola reserva por run: cuenta 1 solicitud del cupo por IP y del global, y
+    # reserva el presupuesto de tokens del run. Si el run falla a mitad, el cupo ya
+    # quedó consumido: repetirlo exige cupo nuevo (no hay reintentos gratis).
+    limites_llm.reservar_run(settings, ip=contexto_llm.ip_actual())
+
+    contexto_datos = servicio._contexto_consulta(run)
     mensajes: list[dict[str, Any]] = [
         {"role": "system", "content": SISTEMA},
-        {"role": "user", "content": cliente.recortar(contexto)},
+        {"role": "user", "content": cliente.recortar(contexto_datos)},
     ]
     traza: list[dict[str, Any]] = []
     consumido = 0
     intentos_salida = 0
 
-    for paso in range(1, pasos_maximos + 1):
-        sobre = cliente.solicitar_chat(
-            settings,
-            mensajes,
-            herramientas=catalogo.esquemas(),
-            max_tokens=min(int(settings.llm_max_tokens), 300),
-        )
-        uso = cliente.uso(sobre)
-        if uso and isinstance(uso.get("total_tokens"), int):
-            consumido += int(uso["total_tokens"])
-        if consumido > presupuesto:
-            raise AgentePresupuesto(
-                "El agente agotó su presupuesto de tokens sin cerrar la consulta."
+    with contexto_llm.reserva_de_run():
+        for paso in range(1, pasos_maximos + 1):
+            sobre = cliente.solicitar_chat(
+                settings,
+                mensajes,
+                herramientas=catalogo.esquemas(),
+                max_tokens=min(int(settings.llm_max_tokens), 300),
             )
+            uso = cliente.uso(sobre)
+            if uso and isinstance(uso.get("total_tokens"), int):
+                consumido += int(uso["total_tokens"])
+            if consumido > presupuesto:
+                raise AgentePresupuesto(
+                    "El agente agotó su presupuesto de tokens sin cerrar la consulta."
+                )
 
-        respuesta = cliente.mensaje(sobre)
-        llamadas = respuesta.get("tool_calls") or []
-        if llamadas:
-            for llamada in llamadas:
-                funcion = (llamada.get("function") or {}) if isinstance(llamada, dict) else {}
-                nombre = str(funcion.get("name") or "")
-                argumentos = funcion.get("arguments")
-                if nombre not in catalogo.HERRAMIENTAS:
-                    traza.append(_traza_paso(paso, "rechazo", herramienta=nombre, motivo="fuera_de_catalogo"))
-                    raise AgentePolitica(
-                        f"El modelo pidió una herramienta no permitida: {nombre}", traza=traza
+            respuesta = cliente.mensaje(sobre)
+            llamadas = respuesta.get("tool_calls") or []
+            if llamadas:
+                for llamada in llamadas:
+                    funcion = (llamada.get("function") or {}) if isinstance(llamada, dict) else {}
+                    nombre = str(funcion.get("name") or "")
+                    argumentos = funcion.get("arguments")
+                    if nombre not in catalogo.HERRAMIENTAS:
+                        traza.append(
+                            _traza_paso(paso, "rechazo", herramienta=nombre, motivo="fuera_de_catalogo")
+                        )
+                        raise AgentePolitica(
+                            f"El modelo pidió una herramienta no permitida: {nombre}", traza=traza
+                        )
+                    try:
+                        resultado = catalogo.ejecutar(servicio, run_id, nombre, argumentos)
+                    except catalogo.ArgumentosInvalidos as exc:
+                        traza.append(
+                            _traza_paso(paso, "rechazo", herramienta=nombre, motivo="argumentos_invalidos")
+                        )
+                        raise AgentePolitica(str(exc), traza=traza) from exc
+                    traza.append(_traza_paso(paso, "herramienta", herramienta=nombre))
+                    mensajes.append({"role": "assistant", "content": "", "tool_calls": [llamada]})
+                    mensajes.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": llamada.get("id", f"call-{paso}"),
+                            "content": json.dumps(resultado, ensure_ascii=False)[:2000],
+                        }
                     )
-                try:
-                    resultado = catalogo.ejecutar(servicio, run_id, nombre, argumentos)
-                except catalogo.ArgumentosInvalidos as exc:
-                    traza.append(_traza_paso(paso, "rechazo", herramienta=nombre, motivo="argumentos_invalidos"))
-                    raise AgentePolitica(str(exc), traza=traza) from exc
-                traza.append(_traza_paso(paso, "herramienta", herramienta=nombre))
-                mensajes.append({"role": "assistant", "content": "", "tool_calls": [llamada]})
+                continue
+
+            contenido = str(respuesta.get("content") or "").strip()
+            if not contenido:
+                raise cliente.LlmUpstreamError("El proveedor devolvió una respuesta vacía.")
+            try:
+                plan = dic.validar_recomendacion(contenido)
+            except cliente.LlmRespuestaInvalida:
+                intentos_salida += 1
+                traza.append(_traza_paso(paso, "salida_invalida"))
+                if intentos_salida >= 2:
+                    raise
                 mensajes.append(
                     {
-                        "role": "tool",
-                        "tool_call_id": llamada.get("id", f"call-{paso}"),
-                        "content": json.dumps(resultado, ensure_ascii=False)[:2000],
+                        "role": "user",
+                        "content": "La respuesta no cumplió el esquema. Devuelve solo el JSON pactado.",
                     }
                 )
-            continue
+                continue
 
-        contenido = str(respuesta.get("content") or "").strip()
-        if not contenido:
-            raise cliente.LlmUpstreamError("El proveedor devolvió una respuesta vacía.")
-        try:
-            plan = dic.validar_recomendacion(contenido)
-        except cliente.LlmRespuestaInvalida:
-            intentos_salida += 1
-            traza.append(_traza_paso(paso, "salida_invalida"))
-            if intentos_salida >= 2:
-                raise
-            mensajes.append(
-                {
-                    "role": "user",
-                    "content": "La respuesta no cumplió el esquema. Devuelve solo el JSON pactado.",
-                }
-            )
-            continue
-
-        traza.append(_traza_paso(paso, "final", plan=plan["plan"]))
-        return {
-            "run_id": run_id,
-            "modo": "openai-tools",
-            "modelo": str(settings.llm_model),
-            "recomendacion": {
-                "plan": plan["plan"],
-                "name": plan["plan_name"],
-                "allowed": True,
-                "forward_blocked": True,
-            },
-            "justificacion": plan["justification"],
-            "evidencia": plan["evidence"],
-            "riesgos": plan["risks"],
-            "traza": traza,
-            "pasos": paso,
-            "presupuesto_tokens": presupuesto,
-            "tokens_consumidos": consumido,
-            "herramientas_disponibles": sorted(catalogo.HERRAMIENTAS),
-            "solo_lectura": True,
-            "advisory_only": True,
-            "approved": False,
-            "executed": False,
-            "external_writes": 0,
-        }
+            traza.append(_traza_paso(paso, "final", plan=plan["plan"]))
+            return {
+                "run_id": run_id,
+                "modo": "openai-tools",
+                "modelo": str(settings.llm_model),
+                "recomendacion": {
+                    "plan": plan["plan"],
+                    "name": plan["plan_name"],
+                    "allowed": True,
+                    "forward_blocked": True,
+                },
+                "justificacion": plan["justification"],
+                "evidencia": plan["evidence"],
+                "riesgos": plan["risks"],
+                "traza": traza,
+                "pasos": paso,
+                "presupuesto_tokens": presupuesto,
+                "tokens_consumidos": consumido,
+                "herramientas_disponibles": sorted(catalogo.HERRAMIENTAS),
+                "solo_lectura": True,
+                "advisory_only": True,
+                "approved": False,
+                "executed": False,
+                "external_writes": 0,
+            }
 
     raise AgenteLimitePasos(
         f"El agente no cerró la consulta en {pasos_maximos} pasos; no se devuelve recomendación."
