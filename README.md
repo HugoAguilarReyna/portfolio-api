@@ -567,3 +567,12 @@ no se añaden referencias a prosa libre para hacerla pasar por verificada.
 Una selección vacía o inválida cae al respaldo extractivo. El contrato comprueba
 identidad y procedencia, no relevancia ni suficiencia para contestar la pregunta.
 Las pruebas usan un proveedor simulado; no certifican calidad de un modelo real.
+
+## MongoDB interno de M5 en Docker
+
+M5 conserva su conexión independiente de la base principal. Para el despliegue
+se admite el nombre de servicio fijo `mongo-m5`, únicamente en el puerto 27017
+y con la base `atlas_comercial_local`. Se rechazan otros hosts remotos, URI SRV,
+puertos y bases en ese servicio. Los destinos de loopback de desarrollo siguen
+funcionando. El archivo `deploy/docker-compose.m5.yml` del sitio coloca MongoDB
+en una red interna sin puertos publicados y conserva sus datos en un volumen.

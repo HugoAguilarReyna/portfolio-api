@@ -11,7 +11,7 @@ abrir cualquier conexión**.
 Reglas (se aplican sin tocar la red)
 ------------------------------------
 - Solo ``mongodb://``; ``mongodb+srv://`` se rechaza siempre.
-- Solo hosts locales: ``127.0.0.1``, ``localhost`` o ``::1``.
+- Hosts locales y el servicio Docker interno ``mongo-m5`` (base y puerto fijos).
 - Sin cadenas de conexión remotas ni hosts distintos del MongoDB local autorizado.
 - La base es exclusiva del proyecto (``atlas_comercial_local`` por omisión).
 - Si la URI y la configuración declaran bases distintas, se rechaza la
@@ -27,6 +27,7 @@ BASE_POR_OMISION = "atlas_comercial_local"
 """Base exclusiva del proyecto en MongoDB local."""
 
 HOSTS_LOCALES = frozenset({"127.0.0.1", "localhost", "::1"})
+HOST_DOCKER_M5 = "mongo-m5"
 
 ESQUEMAS_PERMITIDOS = ("mongodb://",)
 
@@ -57,7 +58,7 @@ def resolver_destino(uri: str | None, base_declarada: str | None = None) -> tupl
 
     partes = urlsplit(texto)
     host = (partes.hostname or "").strip().lower()
-    if host not in HOSTS_LOCALES:
+    if host not in HOSTS_LOCALES and host != HOST_DOCKER_M5:
         raise DestinoNoPermitido(
             "Destino no autorizado: solo se admite MongoDB local "
             f"({', '.join(sorted(HOSTS_LOCALES))}). Se rechaza cualquier host remoto."
@@ -73,6 +74,13 @@ def resolver_destino(uri: str | None, base_declarada: str | None = None) -> tupl
             f"({base_uri!r} frente a {base_config!r})."
         )
     base = base_config or base_uri or BASE_POR_OMISION
+    if host == HOST_DOCKER_M5 and (
+        partes.port not in (None, 27017) or base != BASE_POR_OMISION
+    ):
+        raise DestinoNoPermitido(
+            "El servicio Docker mongo-m5 solo admite el puerto 27017 y la base "
+            "atlas_comercial_local."
+        )
     if not base.replace("_", "").isalnum():
         raise DestinoNoPermitido(
             "Nombre de base no válido: se admiten letras, números y guion bajo."
