@@ -246,7 +246,7 @@ class MongoDatabase:
 
     @property
     def m5_db(self) -> Database:
-        """Base del proyecto M5 (local por omisión; Atlas solo si se configura)."""
+        """Base exclusiva de M5: loopback local o servicio Docker mongo-m5."""
         return self._m5_db
 
     @property

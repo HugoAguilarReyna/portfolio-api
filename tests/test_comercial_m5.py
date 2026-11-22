@@ -963,6 +963,19 @@ def test_destino_local_valido():
     assert "mongodb://" not in conexion.describir(uri)  # sin cadena de conexión completa
 
 
+def test_destino_docker_m5_exclusivo():
+    uri = "mongodb://mongo-m5:27017/atlas_comercial_local"
+    assert conexion.resolver_destino(uri) == (uri, "atlas_comercial_local")
+    for invalida in (
+        "mongodb://mongo-m5:27018/atlas_comercial_local",
+        "mongodb://mongo-m5:27017/hugo_portfolio",
+        "mongodb://mongo-m5.example.com:27017/atlas_comercial_local",
+        "mongodb+srv://mongo-m5/atlas_comercial_local",
+    ):
+        with pytest.raises(conexion.DestinoNoPermitido):
+            conexion.resolver_destino(invalida)
+
+
 def test_destino_rechaza_remotos_sin_abrir_red(monkeypatch):
     """Rechazo puro: si alguien intentara crear un cliente, la prueba falla."""
     import pymongo
