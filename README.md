@@ -514,3 +514,42 @@ procedencia de nuevas publicaciones oficiales desde este entorno. Para añadir u
 fragmento, incluye `chunk_id`, `source_id`, `heading`, `content` y la fuente en
 `corpus.json/sources` con `title`, `date`, `kind` y `url` oficial; sin esa
 procedencia verificable no debe añadirse.
+
+### Agente con herramientas · Data Incident Commander (solo lectura)
+
+`POST /api/v1/incident-commander/runs/{run_id}/agent` ejecuta un bucle de agente
+con **herramientas de solo lectura** sobre el run: máximo 6 pasos y presupuesto de
+tokens configurable (`LLM_AGENTE_MAX_PASOS`, `LLM_AGENTE_PRESUPUESTO_TOKENS`).
+
+| Herramienta | Devuelve |
+|---|---|
+| `estado_run` | Estado y si hay aprobación registrada |
+| `validaciones` | Validaciones del run sobre la copia de trabajo |
+| `matriz_planes` | Matriz de criterios por plan |
+| `catalogo_planes` | Planes permitidos y bloqueados |
+| `snapshot` | Metadatos del snapshot y su digest |
+
+- Cada herramienta tiene contrato Pydantic con `extra="forbid"`; el nombre y los
+  argumentos se validan antes de ejecutar y nunca escriben.
+- El modelo **no** puede aprobar, cambiar estados, escribir fuera ni ejecutar
+  remediaciones: cualquier herramienta o argumento fuera de catálogo se rechaza
+  (422 con la traza) y queda registrado.
+- La traza es segura (paso, tipo, herramienta, plan): sin prompts completos, sin
+  credenciales y sin datos sensibles.
+- La respuesta es consultiva (`advisory_only`, `external_writes: 0`); la
+  aprobación humana y la simulación en `POST /runs/{id}/approve` no cambian.
+- Ante límite de pasos, presupuesto agotado, error del proveedor o salida
+  inválida, la ruta responde 502/503 y el flujo determinista sigue disponible.
+
+Evaluación reproducible con proveedor simulado:
+
+```bash
+python scripts/evaluar_agente_dic.py
+```
+
+Conjunto sintético de 12 incidentes (`app/evals/dic/incidentes.jsonl`) con las
+herramientas esperadas y el plan esperado. Resultado simulado del 2026-11-22:
+10/12 cerrados, plan correcto 1.0 y herramientas exactas 1.0 entre los cerrados,
+2.9 pasos de media, 2 violaciones de política bloqueadas y **0 escrituras**; el
+baseline determinista resuelve 12/12. Son cifras del doble simulado, **no** del
+modelo real; no hay coste en USD calculable.

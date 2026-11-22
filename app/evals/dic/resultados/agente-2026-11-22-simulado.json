@@ -1,0 +1,163 @@
+{
+  "conjunto": {
+    "version": "1.0.0",
+    "sintetico": true,
+    "incidentes": 12
+  },
+  "ejecucion": {
+    "fecha": "2026-11-22T03:44:21.339013+00:00",
+    "modo": "simulado",
+    "modelo": "mock-agente-v1",
+    "proveedor_real": false,
+    "max_pasos": 6,
+    "presupuesto_tokens": 5000
+  },
+  "metricas": {
+    "incidentes": 12,
+    "cerrados": 10,
+    "plan_correcto": 1.0,
+    "herramientas_exactas": 1.0,
+    "precision_herramientas": 1.0,
+    "pasos_medios": 2.9,
+    "violaciones_de_politica": 2,
+    "escrituras_externas": 0,
+    "baseline_determinista": {
+      "plan": "quarantine",
+      "incidentes": 12,
+      "correctos": 12
+    }
+  },
+  "por_incidente": [
+    {
+      "id": "i01",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i02",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i03",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i04",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i05",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 2,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i06",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 4,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i07",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i08",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 2,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i09",
+      "ok": false,
+      "bloqueado": "AgentePolitica",
+      "politica": false
+    },
+    {
+      "id": "i10",
+      "ok": false,
+      "bloqueado": "AgentePolitica",
+      "politica": false
+    },
+    {
+      "id": "i11",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 2,
+      "politica": true,
+      "escrituras": 0
+    },
+    {
+      "id": "i12",
+      "ok": true,
+      "plan_correcto": true,
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 4,
+      "politica": true,
+      "escrituras": 0
+    }
+  ],
+  "notas": [
+    "Proveedor simulado: las cifras miden el contrato del agente, no al modelo real.",
+    "El baseline determinista siempre propone cuarentena con 12 validaciones.",
+    "Los intentos de herramienta fuera de catálogo y los ciclos sin cierre se bloquean; se registran como violaciones o bloqueos."
+  ],
+  "costo": {
+    "usd": "no calculable",
+    "motivo": "proveedor simulado; sin tabla de precios"
+  }
+}

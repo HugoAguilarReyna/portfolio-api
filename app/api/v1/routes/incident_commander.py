@@ -153,3 +153,41 @@ def analyse_run(run_id: str, servicio: IncidentDep) -> dict:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/runs/{run_id}/agent",
+    summary="Agente de solo lectura con herramientas (máximo 6 pasos)",
+)
+def run_agent(run_id: str, servicio: IncidentDep) -> dict:
+    """Bucle con herramientas de lectura; no aprueba ni escribe."""
+    from app.incident_commander import agente
+
+    settings = servicio.settings
+    try:
+        return agente.ejecutar(servicio, run_id, settings)
+    except RunNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except cliente.LlmNoConfigurado as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    except cliente.CuotaExcedida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.reintentar_en)},
+        ) from exc
+    except agente.AgentePolitica as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"detail": str(exc), "traza": exc.traza},
+        ) from exc
+    except (agente.AgenteLimitePasos, agente.AgentePresupuesto) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+        ) from exc
+    except (cliente.LlmUpstreamError, cliente.LlmRespuestaInvalida) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+        ) from exc

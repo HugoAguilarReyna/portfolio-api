@@ -273,3 +273,40 @@ def solicitar_json(
     sobre = post_chat(settings, payload)
     datos_modelo = objeto(contenido(sobre))
     return validar(datos_modelo), sobre
+
+
+def mensaje(sobre: dict[str, Any]) -> dict[str, Any]:
+    """Devuelve el mensaje del asistente (puede traer `tool_calls`)."""
+    try:
+        datos = sobre["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LlmUpstreamError(
+            "La respuesta del proveedor no trae un mensaje utilizable."
+        ) from exc
+    if not isinstance(datos, dict):
+        raise LlmUpstreamError("La respuesta del proveedor no trae un mensaje utilizable.")
+    return datos
+
+
+def solicitar_chat(
+    settings: Settings,
+    mensajes: list[dict[str, Any]],
+    *,
+    herramientas: list[dict[str, Any]] | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    """Una vuelta de conversación (con o sin herramientas) por el transporte común.
+
+    Se apoya en `post_chat`, así que conserva la reserva de cuota, el tope de
+    salida y el manejo de errores compartidos.
+    """
+    payload: dict[str, Any] = {
+        "model": str(settings.llm_model),
+        "temperature": 0,
+        "max_tokens": int(max_tokens or settings.llm_max_tokens),
+        "messages": mensajes,
+    }
+    if herramientas:
+        payload["tools"] = herramientas
+        payload["tool_choice"] = "auto"
+    return post_chat(settings, payload)

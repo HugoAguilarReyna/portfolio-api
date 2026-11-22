@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     llm_cuota_hmac_key: str | None = None
     #: Intervalo mínimo entre consultas de un mismo visitante, en segundos.
     llm_intervalo_minimo_s: int = Field(default=600, ge=0, le=86_400)
+    #: Bucle de agente con herramientas (Incident Commander).
+    llm_agente_max_pasos: int = Field(default=6, ge=1, le=12)
+    llm_agente_presupuesto_tokens: int = Field(default=1_800, ge=300, le=20_000)
     #: Cuotas compartidas entre workers (base y colección dedicadas de la app).
     llm_limites_db: str = "portfolio_guard"
     llm_limites_coleccion: str = "llm_limites"
