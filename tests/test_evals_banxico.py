@@ -106,7 +106,7 @@ def test_citas_inventadas_degradan_a_extractiva(monkeypatch) -> None:
         monkeypatch.setattr(
             cliente,
             "post_chat",
-            lambda *a, **k: {"choices": [{"message": {"content": "La tasa quedó en 6.25% [BM-2026-11-05]."}}]},
+            lambda *a, **k: {"choices": [{"message": {"content": json.dumps({"evidence": [{"chunk_id": evidencia[0]["chunk_id"], "quote": evidencia[0]["content"]}]})}}]},
         )
         texto, modo = configurado.responder(pregunta, evidencia)
         assert modo == "llm-grounded"
