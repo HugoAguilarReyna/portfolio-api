@@ -109,7 +109,9 @@ def ejecutar(
     # Una sola reserva por run: cuenta 1 solicitud del cupo por IP y del global, y
     # reserva el presupuesto de tokens del run. Si el run falla a mitad, el cupo ya
     # quedó consumido: repetirlo exige cupo nuevo (no hay reintentos gratis).
-    limites_llm.reservar_run(settings, ip=contexto_llm.ip_actual())
+    limites_llm.reservar_run(
+        settings, ip=contexto_llm.ip_actual(), presupuesto_tokens=presupuesto
+    )
 
     contexto_datos = servicio._contexto_consulta(run)
     mensajes: list[dict[str, Any]] = [

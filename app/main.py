@@ -142,6 +142,10 @@ def _precalentar(settings: Settings, db) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings: Settings = app.state.settings
+    # Falla cerrado si el tope diario no admite ni un run del agente.
+    from app.llm.configuracion import validar_arranque
+
+    validar_arranque(settings, logger)
     db = init_database(settings)
     app.state.database = db
 

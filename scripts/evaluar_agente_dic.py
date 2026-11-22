@@ -1,19 +1,29 @@
 """Evalúa el agente con herramientas sobre incidentes sintéticos.
 
-    python scripts/evaluar_agente_dic.py
+    python scripts/evaluar_agente_dic.py                      # proveedor simulado
+    python scripts/evaluar_agente_dic.py --proveedor openai    # requiere LLM_API_KEY
 
-Usa un proveedor simulado determinista: no hay red ni coste. Las cifras miden el
-arnés y el contrato, no el modelo real.
+El conjunto es sintético (`app/evals/dic/incidentes.jsonl`). Cada corrida escribe
+SU archivo (`evaluacion_agente_dic_<proveedor>.json`) y no sobrescribe resultados
+previos salvo que se pase `--forzar`.
+
+Qué mide cada modo:
+* `simulado`  → contrato y fontanería del agente (guardas, herramientas, límites).
+* real (`openai`, `deepseek`) → comportamiento del modelo, tokens y costo medidos.
+
+No se ejecuta ninguna llamada real en las pruebas; los proveedores reales exigen
+credenciales en el entorno y abortan antes de empezar si faltan.
 """
 
 from __future__ import annotations
 
-import json
 import argparse
+import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
@@ -23,11 +33,21 @@ from app.config import Settings  # noqa: E402
 from app.evals import dic as evals  # noqa: E402
 from app.incident_commander import agente  # noqa: E402
 from app.incident_commander.service import IncidentCommander  # noqa: E402
-from app.llm import cliente  # noqa: E402
+from app.llm import cliente, contexto, limites  # noqa: E402
+
+PROVEEDORES = ("simulado", "openai", "deepseek")
+BASES = {
+    "openai": "https://api.openai.com/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+}
+#: USD por millón de tokens (entrada, salida). Verificado el 2026-11-22 en
+#: https://developers.openai.com/api/docs/pricing (Standard, gpt-4.1-mini).
+TARIFAS = {"gpt-4.1-mini": (0.40, 1.60)}
+IDENTIFICADOR_EVALUACION = "evaluacion-automatica"
 
 
 class ProveedorGuiado:
-    """Devuelve la secuencia guionizada de cada incidente sintético."""
+    """Doble determinista: devuelve la secuencia guionizada de cada incidente."""
 
     def __init__(self, incidentes: list[dict[str, Any]]) -> None:
         self.plan = {fila["id"]: fila for fila in incidentes}
@@ -75,12 +95,50 @@ class ProveedorGuiado:
         }
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--salida', type=Path, default=None, help='JSON de resultados simulados')
-    args = parser.parse_args(argv)
-    incidentes = evals.cargar_incidentes()
-    settings = Settings(
+class MedidorTokens:
+    """Envuelve el transporte real para acumular tokens y estimar el costo."""
+
+    def __init__(self, original) -> None:
+        self.original = original
+        self.entrada = 0
+        self.salida = 0
+
+    def __call__(self, settings, payload, *, timeout=None):
+        sobre = self.original(settings, payload, timeout=timeout)
+        uso = sobre.get("usage") if isinstance(sobre, dict) else None
+        if isinstance(uso, dict):
+            if isinstance(uso.get("prompt_tokens"), int):
+                self.entrada += int(uso["prompt_tokens"])
+            if isinstance(uso.get("completion_tokens"), int):
+                self.salida += int(uso["completion_tokens"])
+        return sobre
+
+
+def ruta_salida(proveedor: str, base: Path | None = None) -> Path:
+    """Un archivo por proveedor: nunca reutiliza el nombre de otra corrida."""
+    return (base or evals.RESULTADOS) / f"evaluacion_agente_dic_{proveedor}.json"
+
+
+def verificar_destino(destino: Path, *, forzar: bool = False) -> None:
+    """No se sobrescribe un resultado previo sin pedirlo explícitamente."""
+    if destino.exists() and not forzar:
+        raise SystemExit(
+            f"El destino ya existe: {destino}. Usa --salida para otro archivo o "
+            "--forzar si quieres reemplazarlo."
+        )
+
+
+def costo_estimado(modelo: str, tokens_entrada: int, tokens_salida: int) -> float | None:
+    """Costo en USD con la tarifa verificada; None si el modelo no está tarifado."""
+    tarifa = TARIFAS.get(modelo)
+    if not tarifa:
+        return None
+    entrada, salida = tarifa
+    return round(tokens_entrada * entrada / 1e6 + tokens_salida * salida / 1e6, 6)
+
+
+def settings_simulado() -> Settings:
+    return Settings(
         _env_file=None,
         llm_base_url="https://proveedor-simulado.invalid/v1",
         llm_api_key="clave-ficticia-de-evaluacion",
@@ -89,96 +147,285 @@ def main(argv: list[str] | None = None) -> int:
         llm_agente_max_pasos=6,
         llm_agente_presupuesto_tokens=5_000,
     )
-    servicio = IncidentCommander(settings)
-    proveedor = ProveedorGuiado(incidentes)
-    original = cliente.post_chat
-    cliente.post_chat = proveedor
-    filas: list[dict[str, Any]] = []
-    try:
-        for caso in incidentes:
-            proveedor.actual = caso
-            proveedor.paso = 0
-            run = servicio.crear_run(caso["escenario"])
-            esperadas = set(caso["herramientas"])
-            try:
-                resultado = agente.ejecutar(servicio, run["run_id"], settings)
-                usadas = {
-                    entrada["herramienta"]
-                    for entrada in resultado["traza"]
-                    if entrada.get("tipo") == "herramienta"
-                }
-                filas.append(
-                    {
-                        "id": caso["id"],
-                        "ok": True,
-                        "plan_correcto": resultado["recomendacion"]["plan"] == caso["plan"],
-                        "herramientas_ok": usadas == esperadas,
-                        "precision": len(usadas & esperadas) / len(usadas) if usadas else None,
-                        "recall": len(usadas & esperadas) / len(esperadas) if esperadas else None,
-                        "pasos": resultado["pasos"],
-                        "politica": not caso.get("violacion", False),
-                        "escrituras": resultado["external_writes"],
-                    }
-                )
-            except (agente.AgentePolitica, agente.AgenteLimitePasos, cliente.LlmRespuestaInvalida) as exc:
-                filas.append(
-                    {
-                        "id": caso["id"],
-                        "ok": False,
-                        "bloqueado": type(exc).__name__,
-                        "politica": not caso.get("violacion", False),
-                    }
-                )
-    finally:
-        cliente.post_chat = original
 
+
+def settings_real(proveedor: str) -> Settings:
+    """Proveedor real: credenciales SOLO del entorno; nunca del repositorio."""
+    faltantes = []
+    if not (os.environ.get("LLM_API_KEY") or "").strip():
+        faltantes.append("LLM_API_KEY")
+    if not (os.environ.get("LLM_MODEL") or "").strip():
+        faltantes.append("LLM_MODEL")
+    if not (os.environ.get("LLM_CUOTA_HMAC_KEY") or "").strip():
+        faltantes.append("LLM_CUOTA_HMAC_KEY")
+    if faltantes:
+        raise SystemExit(
+            f"El proveedor «{proveedor}» requiere en el entorno: {', '.join(faltantes)}. "
+            "No se inició la corrida (no se hizo ninguna llamada)."
+        )
+    ajustes = Settings(_env_file=None)
+    if not (ajustes.llm_base_url or "").strip():
+        ajustes = ajustes.model_copy(update={"llm_base_url": BASES[proveedor]})
+    return ajustes
+
+
+def calcular_metricas(filas: list[dict[str, Any]]) -> dict[str, Any]:
+    """Métricas derivadas de los resultados de esta corrida (nada escrito a mano)."""
     total = len(filas)
-    correctos = [fila for fila in filas if fila.get("ok")]
-    metricas = {
+    cerrados = [fila for fila in filas if fila.get("ok")]
+    correctos = [
+        fila for fila in cerrados if fila.get("plan_correcto") and fila.get("herramientas_ok")
+    ]
+    precisiones = [fila["precision"] for fila in cerrados if fila.get("precision") is not None]
+    return {
         "incidentes": total,
-        "cerrados": len(correctos),
-        "plan_correcto": round(sum(1 for fila in correctos if fila.get("plan_correcto")) / max(1, len(correctos)), 4),
-        "herramientas_exactas": round(sum(1 for fila in correctos if fila.get("herramientas_ok")) / max(1, len(correctos)), 4),
-        "precision_herramientas": round(
-            sum(fila["precision"] for fila in correctos if fila.get("precision") is not None)
-            / max(1, sum(1 for fila in correctos if fila.get("precision") is not None)),
-            4,
+        "total": total,
+        "correctos": len(correctos),
+        "incorrectos": total - len(correctos),
+        "tasa_acierto": round(len(correctos) / total, 4) if total else 0.0,
+        "cerrados": len(cerrados),
+        "plan_correcto": round(
+            sum(1 for fila in cerrados if fila.get("plan_correcto")) / max(1, len(cerrados)), 4
         ),
+        "herramientas_exactas": round(
+            sum(1 for fila in cerrados if fila.get("herramientas_ok")) / max(1, len(cerrados)), 4
+        ),
+        "precision_herramientas": round(sum(precisiones) / max(1, len(precisiones)), 4),
         "pasos_medios": round(
-            sum(fila.get("pasos", 0) for fila in correctos) / max(1, len(correctos)), 3
+            sum(fila.get("pasos", 0) for fila in cerrados) / max(1, len(cerrados)), 3
         ),
         "violaciones_de_politica": sum(
             1 for fila in filas if fila.get("bloqueado") in {"AgentePolitica"}
         ),
         "escrituras_externas": sum(fila.get("escrituras", 0) for fila in filas),
-        "baseline_determinista": {"plan": "quarantine", "incidentes": total, "correctos": total},
     }
+
+
+def calcular_baseline(incidentes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Acierto real del flujo determinista, que siempre propone «quarantine».
+
+    Los incidentes marcados `violacion: True` son adversariales: no tienen un plan
+    que cerrar, así que se excluyen del denominador y se reportan aparte.
+    """
+    evaluables = [caso for caso in incidentes if not caso.get("violacion")]
+    aciertos = [caso for caso in evaluables if caso["plan"] == "quarantine"]
+    excluidos = [caso["id"] for caso in incidentes if caso.get("violacion")]
+    return {
+        "plan": "quarantine",
+        "incidentes_evaluables": len(evaluables),
+        "correctos": len(aciertos),
+        "incorrectos": len(evaluables) - len(aciertos),
+        "tasa_acierto": round(len(aciertos) / len(evaluables), 4) if evaluables else 0.0,
+        "excluidos_por_violacion": excluidos,
+    }
+
+
+def _fila_incidente(caso: dict[str, Any], resultado: dict[str, Any] | None, error: Exception | None):
+    if error is not None:
+        return {
+            "id": caso["id"],
+            "ok": False,
+            "bloqueado": type(error).__name__,
+            "politica": not caso.get("violacion", False),
+        }
+    usadas = {
+        entrada["herramienta"]
+        for entrada in resultado["traza"]
+        if entrada.get("tipo") == "herramienta"
+    }
+    esperadas = set(caso["herramientas"])
+    return {
+        "id": caso["id"],
+        "ok": True,
+        "plan_correcto": resultado["recomendacion"]["plan"] == caso["plan"],
+        "herramientas_ok": usadas == esperadas,
+        "precision": len(usadas & esperadas) / len(usadas) if usadas else None,
+        "recall": len(usadas & esperadas) / len(esperadas) if esperadas else None,
+        "pasos": resultado["pasos"],
+        "politica": not caso.get("violacion", False),
+        "escrituras": resultado["external_writes"],
+    }
+
+
+def evaluar(
+    incidentes: list[dict[str, Any]],
+    settings: Settings,
+    *,
+    proveedor: str,
+    medidor: MedidorTokens | None,
+    max_costo_usd: float,
+    preparar_caso: Callable[[dict[str, Any]], None] | None = None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Corre el agente sobre el conjunto; corta si el costo estimado supera el tope."""
+    servicio = IncidentCommander(settings)
+    filas: list[dict[str, Any]] = []
+    abortada = False
+    for caso in incidentes:
+        if preparar_caso is not None:
+            preparar_caso(caso)
+        run = servicio.crear_run(caso["escenario"])
+        try:
+            resultado = agente.ejecutar(servicio, run["run_id"], settings)
+            filas.append(_fila_incidente(caso, resultado, None))
+        except (
+            agente.AgentePolitica,
+            agente.AgenteLimitePasos,
+            agente.AgentePresupuesto,
+            cliente.LlmRespuestaInvalida,
+            cliente.LlmUpstreamError,
+        ) as exc:
+            filas.append(_fila_incidente(caso, None, exc))
+        if medidor is not None:
+            costo = costo_estimado(settings.llm_model or "", medidor.entrada, medidor.salida)
+            if costo is not None and costo >= max_costo_usd:
+                abortada = True
+                break
+    return filas, abortada
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Evalúa el agente con herramientas del DIC.")
+    parser.add_argument(
+        "--proveedor",
+        choices=PROVEEDORES,
+        default="simulado",
+        help="simulado (por omisión) o un proveedor real con credenciales en el entorno",
+    )
+    parser.add_argument("--salida", type=Path, default=None, help="ruta del JSON de resultados")
+    parser.add_argument("--forzar", action="store_true", help="sobrescribe el destino si existe")
+    parser.add_argument(
+        "--max-costo-usd",
+        type=float,
+        default=0.50,
+        help="tope de costo estimado para corridas reales (USD)",
+    )
+    args = parser.parse_args(argv)
+
+    incidentes = evals.cargar_incidentes()
+    destino = args.salida or ruta_salida(args.proveedor)
+    verificar_destino(destino, forzar=args.forzar)
+
+    original_post_chat = cliente.post_chat
+    original_reservar_run = limites.reservar_run
+    original_reservar_llamada = limites.reservar_llamada
+    token_ip = None
+    preparar_caso: Callable[[dict[str, Any]], None] | None = None
+    if args.proveedor == "simulado":
+        settings = settings_simulado()
+        medidor = None
+        guion: Any = ProveedorGuiado(incidentes)
+        cliente.post_chat = guion
+
+        def preparar(caso: dict[str, Any]) -> None:
+            guion.actual = caso
+            guion.paso = 0
+
+        preparar_caso = preparar
+        # Modo offline: sin proveedor no hay gasto que proteger, así que la
+        # corrida no consume las cuotas de los visitantes. En el modo real las
+        # cuotas se aplican con normalidad.
+        limites.reservar_run = lambda *args, **kwargs: {"visitante_del_dia": 1, "global_del_dia": 1}
+        limites.reservar_llamada = lambda *args, **kwargs: {"visitante_del_dia": 1, "global_del_dia": 1}
+        notas = [
+            "Proveedor simulado: las cifras miden el contrato y las guardas del agente, "
+            "no el comportamiento de un modelo real.",
+            "El baseline determinista se calcula comparando «quarantine» con el plan "
+            "esperado de cada incidente (los adversariales quedan fuera del denominador).",
+            "Las métricas cubren todos los incidentes, adversariales incluidos: "
+            "«correctos» exige plan igual al esperado y herramientas exactas, e "
+            "«incorrectos» = total − correctos (incluye runs que la política bloqueó).",
+        ]
+    else:
+        settings = settings_real(args.proveedor)
+        token_ip = contexto.fijar_ip(IDENTIFICADOR_EVALUACION)
+        medidor = MedidorTokens(original_post_chat)
+        cliente.post_chat = medidor
+        notas = [
+            f"Proveedor real «{args.proveedor}»: las cifras miden el comportamiento del "
+            "modelo, con tokens medidos por el uso que reporta el proveedor.",
+            "La corrida usa un identificador de evaluación, pero consume cuotas reales: "
+            "ajusta LLM_MAX_SOLICITUDES_POR_IP_DIA / LLM_MAX_SOLICITUDES_DIA / "
+            "LLM_MAX_TOKENS_DIA en el entorno antes de correrla.",
+            "El baseline determinista se calcula comparando «quarantine» con el plan "
+            "esperado de cada incidente.",
+            "Las métricas cubren todos los incidentes, adversariales incluidos: "
+            "«correctos» exige plan igual al esperado y herramientas exactas, e "
+            "«incorrectos» = total − correctos (incluye runs que la política bloqueó).",
+        ]
+        print(
+            "AVISO: corrida real con coste. Hace una reserva de cuota por incidente; "
+            "si el cupo diario es el de producción (1 solicitud), solo pasará la primera.",
+            file=sys.stderr,
+        )
+
+    try:
+        filas, abortada = evaluar(
+            incidentes,
+            settings,
+            proveedor=args.proveedor,
+            medidor=medidor,
+            max_costo_usd=args.max_costo_usd,
+            preparar_caso=preparar_caso,
+        )
+    finally:
+        cliente.post_chat = original_post_chat
+        limites.reservar_run = original_reservar_run
+        limites.reservar_llamada = original_reservar_llamada
+        if token_ip is not None:
+            contexto.restablecer(token_ip)
+
+    metricas = calcular_metricas(filas)
+    baseline = calcular_baseline(incidentes)
+    costo = None
+    if medidor is not None:
+        costo = costo_estimado(settings.llm_model or "", medidor.entrada, medidor.salida)
+
     resultado = {
-        "conjunto": {"version": evals.VERSION, "sintetico": True, "incidentes": total},
+        "conjunto": {"version": evals.VERSION, "sintetico": True, "incidentes": len(incidentes)},
+        "proveedor": args.proveedor,
         "ejecucion": {
             "fecha": datetime.now(timezone.utc).isoformat(),
-            "modo": "simulado",
-            "modelo": "mock-agente-v1",
-            "proveedor_real": False,
+            "modo": "simulado" if args.proveedor == "simulado" else "real",
+            "proveedor": args.proveedor,
+            "modelo": settings.llm_model,
+            "proveedor_real": args.proveedor != "simulado",
             "max_pasos": settings.llm_agente_max_pasos,
             "presupuesto_tokens": settings.llm_agente_presupuesto_tokens,
+            "max_costo_usd": args.max_costo_usd,
+            "abortada_por_costo": abortada,
         },
         "metricas": metricas,
+        "baseline_determinista": baseline,
         "por_incidente": filas,
-        "notas": [
-            "Proveedor simulado: las cifras miden el contrato del agente, no al modelo real.",
-            "El baseline determinista siempre propone cuarentena con 12 validaciones.",
-            "Los intentos de herramienta fuera de catálogo y los ciclos sin cierre se bloquean; se registran como violaciones o bloqueos.",
-        ],
-        "costo": {"usd": "no calculable", "motivo": "proveedor simulado; sin tabla de precios"},
+        "tokens_totales": {
+            "entrada": medidor.entrada if medidor else None,
+            "salida": medidor.salida if medidor else None,
+        },
+        "costo": {
+            "usd": costo if costo is not None else "no calculable",
+            "motivo": (
+                "tarifa verificada de gpt-4.1-mini ($0.40/M entrada, $1.60/M salida)"
+                if costo is not None
+                else "proveedor simulado o modelo sin tarifa verificada en el repositorio"
+            ),
+        },
+        "notas": notas,
     }
-    destino = args.salida or (evals.RESULTADOS / f"agente-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-simulado.json")
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
-    for clave, valor in metricas.items():
-        print(f"{clave}: {valor}")
+
+    print(f"proveedor: {args.proveedor} · modelo: {settings.llm_model}")
+    print(
+        f"total={metricas['total']} correctos={metricas['correctos']} "
+        f"incorrectos={metricas['incorrectos']} tasa={metricas['tasa_acierto']}"
+    )
+    print(
+        f"baseline: {baseline['correctos']}/{baseline['incidentes_evaluables']} "
+        f"(excluidos {len(baseline['excluidos_por_violacion'])})"
+    )
+    print(f"costo: {resultado['costo']['usd']}")
     print(f"resultados en {destino}")
-    return 0
+    return 2 if abortada else 0
 
 
 if __name__ == "__main__":

@@ -150,7 +150,8 @@ class Settings(BaseSettings):
     llm_max_solicitudes_por_ip_dia: int = Field(default=1, ge=1, le=10_000)
     llm_max_solicitudes_dia: int = Field(default=10, ge=1, le=100_000)
     #: Tope diario de tokens para toda la API (10 consultas × 300 = 3 000).
-    llm_max_tokens_dia: int = Field(default=3_000, ge=1_000, le=50_000_000)
+    #: Debe cubrir al menos un run del agente (LLM_AGENTE_PRESUPUESTO_TOKENS).
+    llm_max_tokens_dia: int = Field(default=230_000, ge=1_000, le=50_000_000)
     #: Redes cuyo `X-Real-IP`/`X-Forwarded-For` se acepta (proxy del despliegue).
     llm_proxies_confiables: str = (
         "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"

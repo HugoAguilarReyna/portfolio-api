@@ -23,6 +23,8 @@ Decisiones de diseño:
 
 from __future__ import annotations
 
+import logging
+
 import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
@@ -32,6 +34,8 @@ from typing import Any, Mapping
 from pymongo.errors import PyMongoError
 
 from app.config import Settings
+
+logger = logging.getLogger("app.llm.limites")
 
 CABECERAS_IP = ("x-real-ip", "x-forwarded-for")
 MINIMO_CLAVE_HEX = 32
@@ -154,6 +158,25 @@ class Limitador:
             )
         return documento
 
+    def _compensar(self, ajustes: list[tuple[str, dict[str, int]]]) -> None:
+        """Revierte los incrementos de una reserva rechazada, en el mismo documento.
+
+        Cada compensación corresponde a un incremento previo de esta misma
+        petición, así que el contador vuelve a reflejar solo lo aceptado. Se aplica
+        con `$inc` negativo (atómico) para no perder carreras entre workers: si dos
+        peticiones compiten por el último hueco, las dos compensan y el contador
+        queda en lo realmente aceptado, no en lo intentado.
+        """
+        for clave, campos in ajustes:
+            try:
+                self.coleccion.find_one_and_update(
+                    {"_id": clave}, {"$inc": {campo: -valor for campo, valor in campos.items()}}
+                )
+            except PyMongoError:
+                # No se interrumpe la respuesta al visitante por esto: el 429 ya se
+                # va a devolver y los contadores caducan solos (índice TTL).
+                logger.warning("No se pudo compensar el contador de cuota %s", clave)
+
     def _ultima(self, clave: str) -> int | None:
         try:
             documento = self.coleccion.find_one({"_id": clave})
@@ -188,8 +211,11 @@ class Limitador:
                     reintentar_en=espera,
                 )
 
-        por_ip = self._incrementar(f"ip:{clave}:{dia}", campos={"n": 1}, conjunto={"ultima": ahora})
+        clave_ip = f"ip:{clave}:{dia}"
+        por_ip = self._incrementar(clave_ip, campos={"n": 1}, conjunto={"ultima": ahora})
         if int(por_ip.get("n", 0)) > int(self.settings.llm_max_solicitudes_por_ip_dia):
+            # Un rechazo no consume cupo del visitante: se compensa el incremento.
+            self._compensar([(clave_ip, {"n": 1})])
             raise CuotaExcedida(
                 "Este visitante ya usó su consulta de hoy; el cupo se renueva a "
                 "medianoche UTC.",
@@ -199,16 +225,21 @@ class Limitador:
         costo = int(
             costo_tokens if costo_tokens is not None else self.settings.llm_max_tokens
         )
+        clave_total = f"total:{dia}"
         global_dia = self._incrementar(
-            f"total:{dia}", campos={"n": 1, "tokens": costo}, conjunto=None
+            clave_total, campos={"n": 1, "tokens": costo}, conjunto=None
         )
         if int(global_dia.get("n", 0)) > int(self.settings.llm_max_solicitudes_dia):
+            self._compensar([(clave_ip, {"n": 1}), (clave_total, {"n": 1, "tokens": costo})])
             raise CuotaExcedida(
                 "El portafolio agotó sus consultas de hoy; el cupo se renueva a "
                 "medianoche UTC.",
                 reintentar_en=_segundos_hasta_medianoche_utc(),
             )
         if int(global_dia.get("tokens", 0)) > int(self.settings.llm_max_tokens_dia):
+            # El run rechazado (23 000 tokens, por ejemplo) no debe bloquear a una
+            # consulta posterior más pequeña: se revierte solicitud y tokens.
+            self._compensar([(clave_ip, {"n": 1}), (clave_total, {"n": 1, "tokens": costo})])
             raise CuotaExcedida(
                 "El portafolio agotó su presupuesto diario de tokens; vuelve a "
                 "medianoche UTC.",
@@ -267,7 +298,9 @@ def asegurar_indices(db: Any, settings: Settings) -> None:
         return
 
 
-def reservar_run(settings: Settings, *, ip: str | None) -> dict[str, int]:
+def reservar_run(
+    settings: Settings, *, ip: str | None, presupuesto_tokens: int | None = None
+) -> dict[str, int]:
     """Reserva única del run del agente: 1 solicitud y su presupuesto de tokens.
 
     El bucle de hasta 6 pasos no vuelve a reservar (`contexto.reserva_de_run`),
@@ -277,5 +310,5 @@ def reservar_run(settings: Settings, *, ip: str | None) -> dict[str, int]:
     return reservar_llamada(
         settings,
         ip=ip,
-        costo_tokens=int(settings.llm_agente_presupuesto_tokens),
+        costo_tokens=int(presupuesto_tokens or settings.llm_agente_presupuesto_tokens),
     )
