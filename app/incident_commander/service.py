@@ -21,10 +21,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-
 from app.config import Settings
+from app.llm import cliente
 
 GDP = "NY.GDP.MKTP.KD.ZG"
 EXPECTED_YEARS = set(range(2019, 2026))
@@ -139,31 +137,12 @@ def _post_chat(
     *,
     timeout: float = LLM_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """POST a `/chat/completions` del proveedor configurado y devuelve el sobre.
+    """Una sola implementación del transporte: el cliente compartido.
 
-    La credencial solo viaja en la cabecera `Authorization`; nunca se registra,
-    se devuelve ni se incluye en el cuerpo de la respuesta de la API.
+    Se conserva el nombre para las pruebas y los dobles locales; la petición, el
+    timeout y el manejo de errores viven en `app.llm.cliente`.
     """
-    endpoint = f"{str(settings.llm_base_url).rstrip('/')}/chat/completions"
-    request = Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {settings.llm_api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=timeout) as respuesta:
-            sobre = json.loads(respuesta.read())
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
-        raise LlmUpstreamError(
-            "La consulta al proveedor no respondió o devolvió datos ilegibles."
-        ) from exc
-    if not isinstance(sobre, dict):
-        raise LlmUpstreamError("La respuesta del proveedor no es un objeto JSON.")
-    return sobre
+    return cliente.post_chat(settings, payload, timeout=timeout)
 
 
 def _extraer_contenido(sobre: dict[str, Any]) -> str:
@@ -533,11 +512,7 @@ class IncidentCommander:
     @property
     def llm_configurado(self) -> bool:
         """Las tres variables del proveedor deben estar presentes."""
-        return bool(
-            (self.settings.llm_base_url or "").strip()
-            and (self.settings.llm_api_key or "").strip()
-            and (self.settings.llm_model or "").strip()
-        )
+        return cliente.configurado(self.settings)
 
     def _contexto_consulta(self, run: dict[str, Any]) -> dict[str, Any]:
         """Resumen acotado del run: sin nombres, sin credenciales, sin datos crudos."""
@@ -593,6 +568,8 @@ class IncidentCommander:
             raise LlmNoConfigurado(
                 "La consulta a OpenAI no está configurada en este despliegue."
             )
+        # Control de frecuencia compartido: protege el presupuesto de la clave.
+        cliente.consumir(self.settings, "incident-commander")
 
         contexto = self._contexto_consulta(run)
         payload = {

@@ -125,6 +125,11 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
+    #: Límites comunes a todas las demos que consultan al modelo.
+    llm_timeout_s: float = Field(default=30.0, ge=5.0, le=120.0)
+    llm_max_tokens: int = Field(default=600, ge=64, le=2_000)
+    #: Consultas por minuto y por proceso (ventana deslizante): protege el gasto.
+    llm_consultas_por_minuto: int = Field(default=5, ge=1, le=120)
 
     # --- Copiloto NL-to-SQL · indicadores WDI de México --------------------
     #: Snapshot versionable: fuente única para la interfaz, la API y SQLite.

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from app.api.v1.routes import incident_commander as rutas
 from app.config import BACKEND_DIR, Settings
 from app.incident_commander import service as servicio_mod
+from app.llm import cliente
 from app.incident_commander.service import (
     IncidentCommander,
     LlmNoConfigurado,
@@ -50,9 +51,20 @@ def servicio() -> IncidentCommander:
 
 def servicio_con_llm() -> IncidentCommander:
     return IncidentCommander(
-        Settings(_env_file=None, incident_data_path=str(SNAPSHOT), **LLM_FICTICIO)
+        Settings(
+            _env_file=None,
+            incident_data_path=str(SNAPSHOT),
+            llm_consultas_por_minuto=120,
+            **LLM_FICTICIO,
+        )
     )
 
+@pytest.fixture(autouse=True)
+def _ventana_limpia():
+    """Cada prueba arranca con la ventana de consultas vacía."""
+    cliente.VENTANA.reiniciar()
+    yield
+    cliente.VENTANA.reiniciar()
 
 def sobre(**contenido) -> dict:
     """Sobre de Chat Completions con el contenido indicado."""
@@ -208,7 +220,7 @@ def test_payload_va_a_chat_completions_con_la_credencial_en_cabecera(monkeypatch
         capturado["timeout"] = timeout
         return Respuesta()
 
-    monkeypatch.setattr(servicio_mod, "urlopen", falso_urlopen)
+    monkeypatch.setattr(cliente, "urlopen", falso_urlopen)
     settings = Settings(_env_file=None, **LLM_FICTICIO)
     resultado = servicio_mod._post_chat(settings, {"model": "modelo-de-prueba", "messages": []})
 

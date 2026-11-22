@@ -11,10 +11,13 @@ from app.api.v1.routes import (
     comercial,
     copiloto_nl_sql,
     datasets,
+    dockmind,
     health,
     incident_commander,
+    kilometro_cero,
     marketing,
     profitability,
+    ripple_room,
     walmex,
 )
 
@@ -30,3 +33,6 @@ api_router.include_router(comercial.router)
 api_router.include_router(briefing_banxico.router)
 api_router.include_router(copiloto_nl_sql.router)
 api_router.include_router(incident_commander.router)
+api_router.include_router(kilometro_cero.router)
+api_router.include_router(ripple_room.router)
+api_router.include_router(dockmind.router)

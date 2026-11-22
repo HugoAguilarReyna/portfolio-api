@@ -16,9 +16,8 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
-
 from app.config import Settings
+from app.llm import cliente
 
 
 class CorpusError(RuntimeError):
@@ -184,6 +183,12 @@ class BriefingBanxico:
         ]
 
     def responder(self, pregunta: str, evidencia: list[dict[str, Any]]) -> tuple[str, str]:
+        """Respuesta con evidencia: extractiva o del modelo, siempre acotada.
+
+        El proveedor recibe solo la pregunta y los fragmentos recuperados. Si no
+        hay configuración, si el proveedor falla o si devuelve una cita que no
+        existe en el corpus, se responde de forma extractiva.
+        """
         if not evidencia:
             return (
                 "No encontré evidencia suficiente en los documentos cargados para "
@@ -192,19 +197,17 @@ class BriefingBanxico:
                 "sin-coincidencias",
             )
         base = " ".join(str(fila["content"]) for fila in evidencia)
-        if not self.llm_configurado:
+        if not cliente.configurado(self.settings):
             return base, "extractiva"
 
-        endpoint = str(self.settings.llm_base_url).rstrip("/")
-        modelo = str(self.settings.llm_model)
-        api_key = str(self.settings.llm_api_key)
         evidencia_prompt = "\n\n".join(
             f"[{fila['source_id']} · {fila['heading']}] {fila['content']}"
             for fila in evidencia
         )
         payload = {
-            "model": modelo,
+            "model": str(self.settings.llm_model),
             "temperature": 0.1,
+            "max_tokens": int(self.settings.llm_max_tokens),
             "messages": [
                 {
                     "role": "system",
@@ -221,28 +224,30 @@ class BriefingBanxico:
                 },
             ],
         }
-        request = Request(
-            f"{endpoint}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
         try:
-            with urlopen(request, timeout=25) as response:
-                result = json.loads(response.read())
-            answer = str(result["choices"][0]["message"]["content"]).strip()
-            if not answer:
-                return base, "extractiva-respaldo"
-            ids = list(dict.fromkeys(fila["source_id"] for fila in evidencia))
-            if not all(f"[{source_id}]" in answer for source_id in ids):
-                answer += "\n\nFuentes: " + " ".join(f"[{source_id}]" for source_id in ids)
-            return answer, "llm-grounded"
-        except Exception:
-            # Si el proveedor falla, se conserva la respuesta extractiva.
+            # El límite por minuto protege el presupuesto de la clave.
+            cliente.consumir(self.settings, "banxico")
+            sobre = cliente.post_chat(self.settings, payload)
+            answer = cliente.contenido(sobre).strip()
+        except (cliente.LlmUpstreamError, cliente.LlmLimiteExcedido):
+            # El proveedor no responde, tarda o se salta el límite: extractiva.
             return base, "extractiva-respaldo"
+
+        citadas = set(re.findall(r"\[(BM-[A-Za-z0-9-]+)\]", answer))
+        conocidas = self.ids_del_corpus
+        if citadas - conocidas:
+            # Una cita inventada invalida la respuesta: se prefiere la evidencia.
+            return base, "extractiva-respaldo"
+
+        ids = list(dict.fromkeys(fila["source_id"] for fila in evidencia))
+        if not citadas:
+            answer += "\n\nFuentes: " + " ".join(f"[{source_id}]" for source_id in ids)
+        return answer, "llm-grounded"
+
+    @property
+    def ids_del_corpus(self) -> set[str]:
+        """Identificadores reales del corpus: única lista blanca de citas."""
+        return {str(fila.get("source_id")) for fila in self.corpus["chunks"]}
 
     def consultar(self, pregunta: str) -> dict[str, Any]:
         evidencia, modo_recuperacion = self.recuperar(pregunta)

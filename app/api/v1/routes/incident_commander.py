@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.config import Settings
+from app.llm import cliente
 from app.incident_commander.service import (
     IncidentCommander,
     LlmNoConfigurado,
@@ -124,6 +125,11 @@ def analyse_run(run_id: str, servicio: IncidentDep) -> dict:
     except LlmNoConfigurado as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except cliente.LlmLimiteExcedido as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         ) from exc
     except LlmUpstreamError as exc:

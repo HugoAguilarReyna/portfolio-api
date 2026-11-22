@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from app.config import BACKEND_DIR, Settings
-from app.rag_banxico import service as rag_service
+from app.llm import cliente
 from app.rag_banxico.service import BriefingBanxico, puntuar
 
 
@@ -64,40 +64,41 @@ def test_puntuacion_solo_devuelve_coincidencias() -> None:
 
 
 def test_modelo_configurado_responde_solo_con_evidencia(monkeypatch) -> None:
-    """El camino LLM exige los identificadores de las fuentes recuperadas."""
+    """El camino LLM usa solo la evidencia y exige citarla."""
+    capturado = {}
 
-    class RespuestaFalsa:
-        def __enter__(self):
-            return self
+    def falso_post_chat(settings, payload, *, timeout=None):
+        capturado["payload"] = payload
+        return {"choices": [{"message": {"content": "La tasa quedó en 6.25%."}}]}
 
-        def __exit__(self, *args):
-            return False
-
-        def read(self):
-            return json.dumps(
-                {"choices": [{"message": {"content": "La tasa quedó en 6.25%."}}]}
-            ).encode("utf-8")
-
-    monkeypatch.setattr(rag_service, "urlopen", lambda request, timeout: RespuestaFalsa())
+    monkeypatch.setattr(cliente, "post_chat", falso_post_chat)
     servicio_llm = servicio(
         llm_base_url="http://proveedor.invalid/v1",
         llm_api_key="clave-de-prueba",
         llm_model="modelo-de-prueba",
     )
     resultado = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
+
     assert resultado["mode"] == "llm-grounded"
     assert "La tasa quedó en 6.25%." in resultado["answer"]
     assert "[BM-2026-11-05]" in resultado["answer"]
     assert resultado["vector_search"] is False
+    # Solo viajan la pregunta y los fragmentos recuperados.
+    mensajes = capturado["payload"]["messages"]
+    assert len(mensajes) == 2
+    assert "Evidencia recuperada:" in mensajes[1]["content"]
+    assert "corpus" not in mensajes[1]["content"].lower()
+    assert "clave-de-prueba" not in json.dumps(capturado["payload"])
+    assert capturado["payload"]["max_tokens"] > 0
 
 
 def test_modelo_que_falla_conserva_respuesta_extractiva(monkeypatch) -> None:
     """Un error del proveedor no deja la consulta sin respuesta ni la inventa."""
 
-    def fallar(request, timeout):
-        raise TimeoutError("proveedor no disponible")
+    def fallar(settings, payload, *, timeout=None):
+        raise cliente.LlmUpstreamError("proveedor no disponible")
 
-    monkeypatch.setattr(rag_service, "urlopen", fallar)
+    monkeypatch.setattr(cliente, "post_chat", fallar)
     servicio_llm = servicio(
         llm_base_url="http://proveedor.invalid/v1",
         llm_api_key="clave-de-prueba",
@@ -107,3 +108,66 @@ def test_modelo_que_falla_conserva_respuesta_extractiva(monkeypatch) -> None:
     assert resultado["mode"] == "extractiva-respaldo"
     assert resultado["evidence"]
     assert "6.25%" in resultado["answer"]
+
+
+def test_cita_inventada_cae_a_extractiva(monkeypatch) -> None:
+    """Una cita que no existe en el corpus invalida la respuesta del modelo."""
+
+    def inventar(settings, payload, *, timeout=None):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": "La tasa subió [BM-1999-01-01-INVENTADO] según el boletín."
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr(cliente, "post_chat", inventar)
+    servicio_llm = servicio(
+        llm_base_url="http://proveedor.invalid/v1",
+        llm_api_key="clave-de-prueba",
+        llm_model="modelo-de-prueba",
+    )
+    resultado = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
+    assert resultado["mode"] == "extractiva-respaldo"
+    assert "INVENTADO" not in resultado["answer"]
+
+
+def test_sin_configuracion_no_se_llama_al_proveedor(monkeypatch) -> None:
+    def prohibido(*args, **kwargs):
+        raise AssertionError("no debe llamarse al proveedor sin configuración")
+
+    monkeypatch.setattr(cliente, "post_chat", prohibido)
+    resultado = servicio().consultar("¿Cuál fue la decisión sobre la tasa?")
+    assert resultado["mode"] == "extractiva"
+    assert resultado["evidence"]
+
+
+def test_el_limite_de_consultas_degrada_a_extractiva(monkeypatch) -> None:
+    cliente.VENTANA.reiniciar()
+
+    def prohibido(*args, **kwargs):
+        raise AssertionError("la ventana debía impedir la llamada")
+
+    monkeypatch.setattr(cliente, "post_chat", prohibido)
+    servicio_llm = servicio(
+        llm_base_url="http://proveedor.invalid/v1",
+        llm_api_key="clave-de-prueba",
+        llm_model="modelo-de-prueba",
+        llm_consultas_por_minuto=1,
+    )
+    # La primera consulta consume el cupo; la segunda no llega al proveedor.
+    monkeypatch.setattr(
+        cliente,
+        "post_chat",
+        lambda *a, **k: {"choices": [{"message": {"content": "La tasa quedó en 6.25%."}}]},
+    )
+    primera = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
+    assert primera["mode"] == "llm-grounded"
+
+    monkeypatch.setattr(cliente, "post_chat", prohibido)
+    segunda = servicio_llm.consultar("¿Cuál fue la decisión sobre la tasa?")
+    assert segunda["mode"] == "extractiva-respaldo"
+    cliente.VENTANA.reiniciar()
