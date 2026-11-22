@@ -13,7 +13,8 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -25,6 +26,28 @@ from app.db.indexes import ensure_indexes
 from app.db.mongo import close_database, init_database
 
 logger = logging.getLogger("app")
+
+
+class LimiteCuerpoMiddleware(BaseHTTPMiddleware):
+    """Rechaza cuerpos mayores que el tope configurado (413).
+
+    Los límites de longitud de los parámetros no cubren un cuerpo POST grande:
+    este middleware lo corta antes de leerlo, sin abrir la puerta a cargas
+    arbitrarias. El valor se configura en `HTTP_MAX_CUERPO_BYTES`.
+    """
+
+    def __init__(self, app, maximo: int) -> None:
+        super().__init__(app)
+        self.maximo = int(maximo)
+
+    async def dispatch(self, request, call_next):  # type: ignore[override]
+        declarado = request.headers.get("content-length")
+        if declarado and declarado.isdigit() and int(declarado) > self.maximo:
+            return JSONResponse(
+                {"detail": "El cuerpo de la petición es demasiado grande."},
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        return await call_next(request)
 
 
 def _precalentar(settings: Settings, db) -> None:
@@ -153,9 +176,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
 
+    try:
+        from app.llm import limites
+
+        limites.asegurar_indices(
+            get_database().db.client[settings.llm_limites_db], settings
+        )
+    except Exception:  # noqa: BLE001 - un fallo aquí no debe impedir arrancar
+        logger.warning("No se pudo preparar el índice de cuotas LLM", exc_info=False)
+
     # Las respuestas del Atlas vial pueden pesar más de un megabyte (decenas de
     # miles de puntos del mapa). Se comprimen en tránsito; el contenido no cambia.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(LimiteCuerpoMiddleware, maximo=settings.http_max_cuerpo_bytes)
 
     if settings.origins:
         app.add_middleware(

@@ -407,3 +407,30 @@ versionan.
 La integración continua ejecuta `pytest -q` completo, no una recolección. No se
 ejecuta ninguna ingesta contra Atlas: las pruebas usan MongoDB local o fixtures, y
 los snapshots públicos de las demos viven en `data/snapshots/`.
+
+### Cuotas de uso y costo (rutas LLM)
+
+Las rutas que consultan al proveedor (`/incident-commander/runs/{id}/analysis`,
+`/kilometro-cero/analisis`, `/ripple-room/analisis`, `/dockmind/analisis`,
+`/briefing-banxico/query`, `/copiloto-nl-sql/query`) pasan por un guardián común:
+
+- **Cupo por visitante**: límite por minuto y cupo diario por IP.
+- **Cupo global**: solicitudes y tokens diarios para toda la API.
+- **Almacén compartido**: base y colección dedicadas en MongoDB
+  (`LLM_LIMITES_DB`/`LLM_LIMITES_COLECCION`), con contadores atómicos
+  (`find_one_and_update` + `upsert`) e índice TTL. Vale para varios workers y
+  para contenedores recreados; no se usa el Redis de la plataforma.
+- **Falla cerrado**: si el almacén no responde, solo las rutas LLM devuelven 503
+  (con `Retry-After` en los 429). Las rutas de datos siguen funcionando.
+- **IP real**: se toma de la conexión y solo se acepta `X-Real-IP` /
+  `X-Forwarded-For` cuando el par está en `LLM_PROXIES_CONFIABLES` (el proxy del
+  despliegue). No se guarda la IP: la clave de visitante es un HMAC con la fecha
+  del día, así que caduca sola.
+- **Presupuesto**: se reserva el techo (`LLM_MAX_TOKENS`) antes de llamar, no el
+  consumo real; el tope diario de tokens no se puede rebasar (puede cortar antes).
+- **Cuerpo**: `HTTP_MAX_CUERPO_BYTES` acota el cuerpo de cualquier petición (413).
+
+> La protección del código **no sustituye** el límite monetario del proyecto de
+> OpenAI: los límites de gasto del proyecto son un tope de facturación, no una
+> cuota por petición. Configúralos en la consola de OpenAI (Project → Limits) y
+> mantén ambos.

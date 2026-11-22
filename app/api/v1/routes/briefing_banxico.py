@@ -14,7 +14,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import DatabaseDep, SettingsDep
+from app.api.deps import CuotaLLMDep, DatabaseDep, SettingsDep
 from app.rag_banxico.service import BriefingBanxico, CorpusError
 
 router = APIRouter(prefix="/briefing-banxico", tags=["Briefing con evidencia · Banxico"])
@@ -48,6 +48,7 @@ def corpus(servicio: BriefingDep) -> dict:
 @router.get("/query", summary="Recupera evidencia y responde solo con ella")
 def query(
     servicio: BriefingDep,
+    cuota: CuotaLLMDep,
     question: Annotated[
         str,
         Query(

@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
 from app.analisis import ripple_room as analisis
-from app.api.deps import SettingsDep
+from app.api.deps import CuotaLLMDep, SettingsDep
 from app.api.v1.routes.comun_llm import ejecutar_consulta
 
 router = APIRouter(prefix="/ripple-room", tags=["The Ripple Room · suministro"])
@@ -74,6 +74,8 @@ def health(settings: SettingsDep) -> dict:
     "/analisis",
     summary="Una perspectiva consultiva por rol, en una sola llamada",
 )
-def analizar_escenario(peticion: PeticionAnalisis, settings: SettingsDep) -> dict:
+def analizar_escenario(
+    peticion: PeticionAnalisis, settings: SettingsDep, cuota: CuotaLLMDep
+) -> dict:
     contexto = peticion.model_dump()
     return ejecutar_consulta(lambda: analisis.analizar(settings, contexto))

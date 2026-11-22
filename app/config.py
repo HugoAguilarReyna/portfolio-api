@@ -130,6 +130,18 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=600, ge=64, le=2_000)
     #: Consultas por minuto y por proceso (ventana deslizante): protege el gasto.
     llm_consultas_por_minuto: int = Field(default=5, ge=1, le=120)
+    #: Cuotas compartidas entre workers (base y colección dedicadas de la app).
+    llm_limites_db: str = "portfolio_guard"
+    llm_limites_coleccion: str = "llm_limites"
+    llm_max_solicitudes_por_ip_dia: int = Field(default=20, ge=1, le=10_000)
+    llm_max_solicitudes_dia: int = Field(default=200, ge=1, le=100_000)
+    llm_max_tokens_dia: int = Field(default=60_000, ge=1_000, le=50_000_000)
+    #: Redes cuyo `X-Real-IP`/`X-Forwarded-For` se acepta (proxy del despliegue).
+    llm_proxies_confiables: str = (
+        "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    )
+    #: Tope de cuerpo HTTP aceptado; por encima se responde 413.
+    http_max_cuerpo_bytes: int = Field(default=65_536, ge=1_024, le=1_048_576)
 
     # --- Copiloto NL-to-SQL · indicadores WDI de México --------------------
     #: Snapshot versionable: fuente única para la interfaz, la API y SQLite.

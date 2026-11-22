@@ -7,6 +7,7 @@ import sqlite3
 
 import pytest
 
+from app.llm import cliente
 from app.config import BACKEND_DIR, Settings
 from app.nl_sql import service as nl_service
 from app.nl_sql.service import CopilotoNlSql, QuestionError
@@ -171,7 +172,11 @@ def test_plan_llm_valido_se_limita_a_json_y_plantilla(monkeypatch, tmp_path) -> 
                 }
             ).encode("utf-8")
 
-    monkeypatch.setattr(nl_service, "urlopen", lambda request, timeout: Respuesta())
+    monkeypatch.setattr(
+        cliente,
+        "post_chat",
+        lambda settings, payload, *, timeout=None: json.loads(Respuesta().read()),
+    )
     servicio_llm = servicio(
         tmp_path,
         llm_base_url="http://proveedor.invalid/v1",
@@ -214,7 +219,11 @@ def test_plan_llm_invalido_cae_al_parser_local(monkeypatch, tmp_path) -> None:
                 }
             ).encode("utf-8")
 
-    monkeypatch.setattr(nl_service, "urlopen", lambda request, timeout: Respuesta())
+    monkeypatch.setattr(
+        cliente,
+        "post_chat",
+        lambda settings, payload, *, timeout=None: json.loads(Respuesta().read()),
+    )
     resultado = servicio(
         tmp_path,
         llm_base_url="http://proveedor.invalid/v1",

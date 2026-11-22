@@ -22,9 +22,9 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
 
 from app.config import Settings
+from app.llm import cliente
 
 
 class DatasetError(RuntimeError):
@@ -244,51 +244,32 @@ class CopilotoNlSql:
         if not self.llm_configurado:
             return None
         permitidos = {codigo: meta["title"] for codigo, meta in METRICS.items()}
-        payload = {
-            "model": self.settings.llm_model,
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Interpreta una consulta en español para el snapshot WDI de México. "
-                        "Devuelve SOLO JSON con el esquema "
-                        '{"country_code":"MEX","indicator_codes":[...],'
-                        '"start_year":2019,"end_year":2025,'
-                        '"operation":"trend|comparison|max|min"}. '
-                        "Usa solo códigos permitidos, años entre 2019 y 2025 y una operación "
-                        "compatible: max/min con un indicador, comparison con dos o tres. "
-                        "Si no puedes mapearla, devuelve {\"unsupported\":true}. "
-                        "Nunca generes SQL."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "question": pregunta,
-                            "indicators_allowed": permitidos,
-                            "years_allowed": list(SUPPORTED_YEARS),
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ],
-        }
-        request = Request(
-            f"{str(self.settings.llm_base_url).rstrip('/')}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.settings.llm_api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
+        sistema = (
+            "Interpreta una consulta en español para el snapshot WDI de México. "
+            "Devuelve SOLO JSON con el esquema "
+            '{"country_code":"MEX","indicator_codes":[...],'
+            '"start_year":2019,"end_year":2025,'
+            '"operation":"trend|comparison|max|min"}. '
+            "Usa solo códigos permitidos, años entre 2019 y 2025 y una operación "
+            "compatible: max/min con un indicador, comparison con dos o tres. "
+            "Si no puedes mapearla, devuelve {\"unsupported\":true}. "
+            "Nunca generes SQL."
         )
         try:
-            with urlopen(request, timeout=15) as respuesta:
-                bruto = json.loads(respuesta.read())["choices"][0]["message"]["content"]
-            plan = json.loads(bruto)
+            # Transporte, cuota por minuto y parseo JSON: cliente compartido.
+            # La validación semántica del plan sigue siendo la de abajo.
+            plan, _sobre = cliente.solicitar_json(
+                self.settings,
+                clave_limite="nl2sql",
+                sistema=sistema,
+                datos={
+                    "question": pregunta,
+                    "indicators_allowed": permitidos,
+                    "years_allowed": list(SUPPORTED_YEARS),
+                },
+                validar=lambda datos: datos,
+                max_tokens=min(int(self.settings.llm_max_tokens), 400),
+            )
             if not isinstance(plan, dict) or plan.get("unsupported"):
                 return None
             codigos = plan.get("indicator_codes")

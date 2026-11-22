@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Request, Depends, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
@@ -47,6 +47,51 @@ def get_db() -> MongoDatabase:
 
 
 DatabaseDep = Annotated[MongoDatabase, Depends(get_db)]
+
+
+def exigir_cuota_llm(
+    request: Request,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> dict[str, int] | None:
+    """Reserva cuota LLM en el almacén compartido antes de llamar al proveedor.
+
+    - La IP se toma de la conexión salvo que venga de un proxy confiable
+      (`LLM_PROXIES_CONFIABLES`); nunca se confía en cabeceras del cliente.
+    - La clave de visitante es un HMAC con vencimiento diario: no se guarda la IP.
+    - Si el almacén no responde, **falla cerrado** (503) solo en rutas LLM.
+    - Sin proveedor configurado no se reserva nada: esas rutas no gastan cuota.
+    """
+    from app.llm import limites
+
+    if not (
+        (settings.llm_base_url or "").strip()
+        and (settings.llm_api_key or "").strip()
+        and (settings.llm_model or "").strip()
+    ):
+        return None
+    almacen = db.db.client[settings.llm_limites_db]
+    try:
+        return limites.reservar_para_peticion(
+            host_conexion=request.client.host if request.client else None,
+            cabeceras=request.headers,
+            db=almacen,
+            settings=settings,
+        )
+    except limites.CuotaExcedida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.reintentar_en)},
+        ) from exc
+    except limites.LimitesNoDisponibles as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+CuotaLLMDep = Annotated[dict[str, int] | None, Depends(exigir_cuota_llm)]
 
 
 def get_sales_repository(db: DatabaseDep, settings: SettingsDep) -> SalesRepository:
