@@ -72,6 +72,8 @@ CNBV_INDICADORES = "cnbv_indicadores"
 # --- Telemetría anónima ------------------------------------------------------
 #: Contadores agregados del portafolio y huellas diarias anónimas (TTL de 48 h).
 METRICAS_VISITAS = "metricas_visitas"
+#: Contadores de frecuencia por huella y minuto (TTL de 2 h; nunca guardan la IP).
+METRICAS_VISITAS_LIMITES = "metricas_visitas_limites"
 
 # --- Atlas vial (SSC · Ciudad de México, datos públicos reales) --------------
 #: Una versión por importación: metadatos del catálogo, hashes, validación.

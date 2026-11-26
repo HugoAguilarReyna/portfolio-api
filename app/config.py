@@ -152,6 +152,10 @@ class Settings(BaseSettings):
     #: Tope diario de tokens para toda la API (10 consultas × 300 = 3 000).
     #: Debe cubrir al menos un run del agente (LLM_AGENTE_PRESUPUESTO_TOKENS).
     llm_max_tokens_dia: int = Field(default=230_000, ge=1_000, le=50_000_000)
+    #: Telemetría anónima: peticiones por visitante (huella diaria) y minuto.
+    telemetria_max_peticiones_minuto: int = Field(default=30, ge=1, le=600)
+    #: Proyectos distintos que una huella diaria puede contabilizar (tope acotado).
+    telemetria_max_proyectos_huella: int = Field(default=30, ge=1, le=500)
     #: Redes cuyo `X-Real-IP`/`X-Forwarded-For` se acepta (proxy del despliegue).
     llm_proxies_confiables: str = (
         "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"

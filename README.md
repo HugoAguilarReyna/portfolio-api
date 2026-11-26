@@ -398,7 +398,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Estado verificado en el repositorio: **362 pruebas pasan y 11 se omiten**. Las
+Estado verificado en el repositorio: **513 pruebas pasan y 11 se omiten**. Las
 omisiones no son fallos ocultos: requieren los boletines reales de la CNBV en
 `data/cnbv/` (periodos 202410, 202409 y 202310) y lo declaran con ese motivo. Los
 archivos se obtienen con `python -m scripts.importar_cnbv --descargar`; no se
@@ -443,6 +443,39 @@ llamada pasa por la reserva de cupo **antes** de tocar el proveedor.
 > Esta protección **no sustituye** el límite monetario del proyecto de OpenAI:
 > configúralo aparte (US$ 1/mes, alerta en US$ 0.50 y «Enforce a hard limit»). Es
 > un tope de facturación del proveedor, no una garantía de gasto cero.
+
+### Telemetría anónima de visitas y proyectos
+
+El sitio envía señales agregadas a `/api/v1/visitas`: una visita por sesión
+(unicidad diaria por visitante) y la exploración de una ficha
+(`/visitas/proyecto`). No hay cookies ni identificadores persistentes.
+
+* **Catálogo cerrado**: `app/data/catalogo_ids.json` se exporta desde
+  `dist/content.js` del sitio. Un proyecto o área fuera del catálogo, o un área
+  que no corresponde al proyecto, responde **422** y no toca ningún contador.
+  Sincronización cuando cambian las fichas:
+
+  ```bash
+  cd portafolio-hugo-aguilar
+  node tools/exportar-catalogo-ids.mjs \
+      --salida ../portfolio-api/app/data/catalogo_ids.json
+  ```
+
+* **Una vista por visitante, día y proyecto**: la huella diaria guarda hasta 30
+  proyectos vistos (`$addToSet`, configurable); repetir el mismo proyecto el
+  mismo día no incrementa el ranking. Solo cuenta si `/visitas/registrar` creó la
+  huella: una vista sin registro previo responde sin contar y sin crear estado.
+* **Límite por huella**: 30 peticiones de escritura por minuto
+  (`TELEMETRIA_MAX_PETICIONES_MINUTO`); excedido responde **429** con
+  `Retry-After`. Los contadores viven en `metricas_visitas_limites` con TTL y
+  nunca guardan la IP.
+* **Privacidad**: sin cookies, sin IP y sin User-Agent guardados; la huella es
+  `HMAC-SHA256(LLM_CUOTA_HMAC_KEY, ip|UA[:120]|día)` truncada y caduca a las 48 h.
+* **Mejor esfuerzo**: el filtro por `User-Agent` (bots, `curl`, monitoreo) se
+  puede eludir falsificando la cabecera. El ranking mide **exploración anónima**,
+  no analítica forense, y no identifica visitantes.
+* Variables: `TELEMETRIA_MAX_PETICIONES_MINUTO` (30) y
+  `TELEMETRIA_MAX_PROYECTOS_HUELLA` (30).
 
 ### Evaluación reproducible de NL-to-SQL
 

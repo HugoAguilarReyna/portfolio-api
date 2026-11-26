@@ -28,7 +28,14 @@ from app.models.visitas import (
     VistaProyecto,
     VistasProyecto,
 )
-from app.services.visitas_service import ServicioVisitas
+from app.services.catalogo_ids import CatalogoInvalido
+from app.services.visitas_service import (
+    AreaDesconocida,
+    AreaNoCorresponde,
+    LimiteFrecuencia,
+    ProyectoDesconocido,
+    ServicioVisitas,
+)
 
 router = APIRouter(prefix="/visitas", tags=["Telemetría anónima"])
 
@@ -65,6 +72,27 @@ def _sin_clave() -> HTTPException:
     )
 
 
+def _sin_catalogo() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=(
+            "El catálogo de telemetría no está disponible en esta API; no se "
+            "registran exploraciones hasta sincronizar app/data/catalogo_ids.json."
+        ),
+    )
+
+
+def _demasiadas(exc: LimiteFrecuencia) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=(
+            "Demasiadas peticiones de telemetría desde este visitante; espera "
+            "unos segundos antes de reintentar."
+        ),
+        headers={"Retry-After": str(exc.reintentar_en)},
+    )
+
+
 @router.post(
     "/registrar",
     response_model=RegistroVisita,
@@ -89,6 +117,8 @@ def registrar_visita(
         )
     except limites.LimitesNoConfigurados as exc:
         raise _sin_clave() from exc
+    except LimiteFrecuencia as exc:
+        raise _demasiadas(exc) from exc
     return RegistroVisita(**datos)
 
 
@@ -101,13 +131,27 @@ def registrar_proyecto(
     datos: VistaProyecto,
     request: Request,
     servicio: VisitasDep,
+    settings: SettingsDep,
 ) -> VistasProyecto:
     """Incrementa la vista del proyecto (y del área, si se indica)."""
-    resultado = servicio.registrar_proyecto(
-        proyecto_id=datos.proyecto_id,
-        area_id=datos.area_id,
-        user_agent=request.headers.get("user-agent"),
-    )
+    try:
+        resultado = servicio.registrar_proyecto(
+            proyecto_id=datos.proyecto_id,
+            area_id=datos.area_id,
+            ip=_ip_visitante(request, settings),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except (ProyectoDesconocido, AreaDesconocida, AreaNoCorresponde) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    except CatalogoInvalido as exc:
+        raise _sin_catalogo() from exc
+    except limites.LimitesNoConfigurados as exc:
+        raise _sin_clave() from exc
+    except LimiteFrecuencia as exc:
+        raise _demasiadas(exc) from exc
     return VistasProyecto(**resultado)
 
 

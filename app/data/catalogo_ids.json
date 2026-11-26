@@ -1,0 +1,53 @@
+{
+  "generado_desde": "dist/content.js",
+  "actualizado": "2026-11-21",
+  "areas": [
+    "agentes",
+    "ciencia-de-datos",
+    "dashboards",
+    "ia-generativa",
+    "ingenieria-de-datos"
+  ],
+  "proyectos": [
+    "analista-asistido",
+    "asistente-investigacion",
+    "atlas-comercial",
+    "atlas-vial",
+    "clientes-campanas",
+    "clientes-en-movimiento",
+    "comparativo-bancario",
+    "copiloto-nl-sql",
+    "data-incident-commander",
+    "dockmind",
+    "gaza-observatorio",
+    "kilometro-cero",
+    "marketing-clientes",
+    "modernizacion-sas-python",
+    "orbita",
+    "pulso-comercial",
+    "retailops",
+    "the-ripple-room",
+    "vidas-en-transito"
+  ],
+  "proyecto_area": {
+    "analista-asistido": "agentes",
+    "asistente-investigacion": "ia-generativa",
+    "atlas-comercial": "ciencia-de-datos",
+    "atlas-vial": "dashboards",
+    "clientes-campanas": "ciencia-de-datos",
+    "clientes-en-movimiento": "ciencia-de-datos",
+    "comparativo-bancario": "dashboards",
+    "copiloto-nl-sql": "ia-generativa",
+    "data-incident-commander": "agentes",
+    "dockmind": "agentes",
+    "gaza-observatorio": "ciencia-de-datos",
+    "kilometro-cero": "agentes",
+    "marketing-clientes": "dashboards",
+    "modernizacion-sas-python": "ingenieria-de-datos",
+    "orbita": "dashboards",
+    "pulso-comercial": "dashboards",
+    "retailops": "ciencia-de-datos",
+    "the-ripple-room": "agentes",
+    "vidas-en-transito": "dashboards"
+  }
+}
