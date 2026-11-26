@@ -176,6 +176,30 @@ def test_la_validacion_detecta_tope_diario_menor_que_el_run() -> None:
     configuracion.validar_arranque(ajustes())  # no lanza
 
 
+def test_los_valores_por_omision_cubren_diez_runs_del_agente() -> None:
+    ajustes_default = Settings(_env_file=None)
+    assert ajustes_default.llm_agente_presupuesto_tokens == 23_000
+    assert ajustes_default.llm_max_tokens_dia == 230_000
+    assert ajustes_default.llm_max_tokens_dia == (
+        10 * ajustes_default.llm_agente_presupuesto_tokens
+    )
+    assert ajustes_default.llm_max_tokens == 300
+    assert configuracion.problemas_de_limites(ajustes_default) == []
+
+
+def test_la_validacion_rechaza_consulta_mayor_que_el_tope_diario() -> None:
+    mala = ajustes(
+        llm_max_tokens=2_000,
+        llm_max_tokens_dia=1_000,
+        llm_agente_presupuesto_tokens=300,
+    )
+    problemas = configuracion.problemas_de_limites(mala)
+    assert problemas
+    assert "LLM_MAX_TOKENS=" in problemas[0]
+    with pytest.raises(RuntimeError, match="LLM_MAX_TOKENS_DIA"):
+        configuracion.validar_arranque(mala)
+
+
 def test_el_lifespan_llama_a_la_validacion() -> None:
     from app import main
 

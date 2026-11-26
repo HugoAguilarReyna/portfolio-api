@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     llm_limites_coleccion: str = "llm_limites"
     llm_max_solicitudes_por_ip_dia: int = Field(default=1, ge=1, le=10_000)
     llm_max_solicitudes_dia: int = Field(default=10, ge=1, le=100_000)
-    #: Tope diario de tokens para toda la API (10 consultas × 300 = 3 000).
+    #: Tope diario de tokens para toda la API: 10 corridas × 23 000 = 230 000.
     #: Debe cubrir al menos un run del agente (LLM_AGENTE_PRESUPUESTO_TOKENS).
     llm_max_tokens_dia: int = Field(default=230_000, ge=1_000, le=50_000_000)
     #: Telemetría anónima: peticiones por visitante (huella diaria) y minuto.

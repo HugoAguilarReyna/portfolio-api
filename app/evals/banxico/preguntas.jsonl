@@ -30,3 +30,7 @@
 {"id": "b30", "categoria": "sin_respaldo", "pregunta": "¿Quién ganó la final del mundial de 2026?", "relevantes": []}
 {"id": "b31", "categoria": "sin_respaldo", "pregunta": "¿Cuál será el tipo de cambio peso dólar al cierre de 2027?", "relevantes": []}
 {"id": "b32", "categoria": "sin_respaldo", "pregunta": "¿Cuántos empleos creó el sector manufacturero en 2026?", "relevantes": []}
+{"id": "b33", "categoria": "actividad", "pregunta": "¿Qué crecimiento se espera para la economía mexicana en 2026 y 2027?", "relevantes": ["BM-2026-08-26-PRONOSTICO-ACTIVIDAD"]}
+{"id": "b34", "categoria": "inflacion", "pregunta": "¿Qué pasó con la inflación no subyacente entre el primer y el segundo trimestre de 2026?", "relevantes": ["BM-2026-08-26-NO-SUBYACENTE"]}
+{"id": "b35", "categoria": "tasa", "pregunta": "¿Qué tasa de referencia mantuvo Banxico en junio y agosto de 2026?", "relevantes": ["BM-2026-08-26-TASA"]}
+{"id": "b36", "categoria": "actividad", "pregunta": "¿Cómo estaban las condiciones del mercado laboral mexicano en el segundo trimestre de 2026?", "relevantes": ["BM-2026-08-26-EMPLEO"]}

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PREGUNTAS = Path(__file__).resolve().parent / "preguntas.jsonl"
 RESULTADOS = Path(__file__).resolve().parent / "resultados"
 VECTORES = Path(__file__).resolve().parent / "vectores-banxico.json"

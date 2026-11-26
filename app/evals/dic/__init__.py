@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 INCIDENTES = Path(__file__).resolve().parent / "incidentes.jsonl"
 RESULTADOS = Path(__file__).resolve().parent / "resultados"
+CATEGORIAS = ("valido", "fuera_alcance", "adversarial")
 
 
 class ConjuntoInvalido(ValueError):
@@ -38,7 +39,20 @@ def cargar_incidentes(ruta: Path | None = None) -> list[dict[str, Any]]:
             raise ConjuntoInvalido(f"{fila['id']}: escenario desconocido")
         if fila["plan"] not in ("quarantine", "backfill", "fullreload"):
             raise ConjuntoInvalido(f"{fila['id']}: plan fuera de política")
+        categoria = fila.get("categoria", "valido")
+        if categoria not in CATEGORIAS:
+            raise ConjuntoInvalido(f"{fila['id']}: categoría desconocida")
+        if categoria == "valido" and fila.get("violacion"):
+            raise ConjuntoInvalido(f"{fila['id']}: un caso válido no puede ser violación")
+        if categoria != "valido" and not fila.get("violacion"):
+            raise ConjuntoInvalido(
+                f"{fila['id']}: los casos {categoria} deben marcarse como violación"
+            )
         filas.append(fila)
     if not 10 <= len(filas) <= 15:
         raise ConjuntoInvalido(f"El conjunto debe tener entre 10 y 15 incidentes; hay {len(filas)}")
+    if not any(f.get("categoria", "valido") == "valido" for f in filas):
+        raise ConjuntoInvalido("El conjunto no tiene casos válidos")
+    if not any(f.get("categoria") != "valido" for f in filas):
+        raise ConjuntoInvalido("El conjunto no tiene casos de seguridad/alcance")
     return filas

@@ -58,7 +58,7 @@ def test_no_inventa_evidencia() -> None:
 def test_salud_no_expone_uri_ni_claves() -> None:
     salud = servicio().salud()
     serializado = json.dumps(salud, ensure_ascii=False)
-    assert salud["corpus_chunks"] == 7
+    assert salud["corpus_chunks"] == 12
     assert salud["vector_search"] is False
     assert salud["mongo"]["target"] in {"local", "atlas"}
     assert "mongodb://" not in serializado
