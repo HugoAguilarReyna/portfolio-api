@@ -271,7 +271,7 @@ python -m scripts.verificar_cnbv     # 56.248 hechos conciliados, 0 discrepancia
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/v1/briefing-banxico/health` | Corpus, recuperación léxica, estado de Atlas y modelo; sin URI ni claves |
-| GET | `/api/v1/briefing-banxico/corpus` | Dos fuentes y siete fragmentos versionables |
+| GET | `/api/v1/briefing-banxico/corpus` | Dos fuentes y doce fragmentos versionables |
 | GET | `/api/v1/briefing-banxico/query?question=...` | Evidencias recuperadas y respuesta extractiva o LLM, según configuración |
 
 **Copiloto NL-to-SQL · indicadores WDI de México:**
@@ -398,7 +398,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Estado verificado en el repositorio: **362 pruebas pasan y 11 se omiten**. Las
+Estado verificado en el repositorio: **519 pruebas pasan y 11 se omiten**. Las
 omisiones no son fallos ocultos: requieren los boletines reales de la CNBV en
 `data/cnbv/` (periodos 202410, 202409 y 202310) y lo declaran con ese motivo. Los
 archivos se obtienen con `python -m scripts.importar_cnbv --descargar`; no se
@@ -420,8 +420,14 @@ llamada pasa por la reserva de cupo **antes** de tocar el proveedor.
 | Consultas por visitante y día (compartido entre las seis demos) | 1 | `LLM_MAX_SOLICITUDES_POR_IP_DIA` |
 | Consultas globales por día | 10 | `LLM_MAX_SOLICITUDES_DIA` |
 | Tokens de salida por consulta | 300 | `LLM_MAX_TOKENS` |
-| Tokens reservados por día | 3 000 | `LLM_MAX_TOKENS_DIA` |
+| Tokens reservados por día | 230 000 | `LLM_MAX_TOKENS_DIA` |
 | Intervalo mínimo entre consultas del visitante | 600 s | `LLM_INTERVALO_MINIMO_S` |
+
+El tope diario de **230 000** tokens se deriva de **10 corridas × 23 000**
+tokens de presupuesto provisional del agente, no de 10 × 300. Los 300 tokens de
+`LLM_MAX_TOKENS` son el máximo de salida de una consulta normal; el presupuesto
+del run suma entrada y salida de todos sus pasos. Ambas cifras son estimaciones
+hasta medir un run real con `tokens_consumidos`.
 
 - **Días UTC**; al agotarse el cupo se responde **429** con `Retry-After` (segundos
   hasta el intervalo o hasta la medianoche UTC) y un mensaje claro.
@@ -443,6 +449,39 @@ llamada pasa por la reserva de cupo **antes** de tocar el proveedor.
 > Esta protección **no sustituye** el límite monetario del proyecto de OpenAI:
 > configúralo aparte (US$ 1/mes, alerta en US$ 0.50 y «Enforce a hard limit»). Es
 > un tope de facturación del proveedor, no una garantía de gasto cero.
+
+### Telemetría anónima de visitas y proyectos
+
+El sitio envía señales agregadas a `/api/v1/visitas`: una visita por sesión
+(unicidad diaria por visitante) y la exploración de una ficha
+(`/visitas/proyecto`). No hay cookies ni identificadores persistentes.
+
+* **Catálogo cerrado**: `app/data/catalogo_ids.json` se exporta desde
+  `dist/content.js` del sitio. Un proyecto o área fuera del catálogo, o un área
+  que no corresponde al proyecto, responde **422** y no toca ningún contador.
+  Sincronización cuando cambian las fichas:
+
+  ```bash
+  cd portafolio-hugo-aguilar
+  node tools/exportar-catalogo-ids.mjs \
+      --salida ../portfolio-api/app/data/catalogo_ids.json
+  ```
+
+* **Una vista por visitante, día y proyecto**: la huella diaria guarda hasta 30
+  proyectos vistos (`$addToSet`, configurable); repetir el mismo proyecto el
+  mismo día no incrementa el ranking. Solo cuenta si `/visitas/registrar` creó la
+  huella: una vista sin registro previo responde sin contar y sin crear estado.
+* **Límite por huella**: 30 peticiones de escritura por minuto
+  (`TELEMETRIA_MAX_PETICIONES_MINUTO`); excedido responde **429** con
+  `Retry-After`. Los contadores viven en `metricas_visitas_limites` con TTL y
+  nunca guardan la IP.
+* **Privacidad**: sin cookies, sin IP y sin User-Agent guardados; la huella es
+  `HMAC-SHA256(LLM_CUOTA_HMAC_KEY, ip|UA[:120]|día)` truncada y caduca a las 48 h.
+* **Mejor esfuerzo**: el filtro por `User-Agent` (bots, `curl`, monitoreo) se
+  puede eludir falsificando la cabecera. El ranking mide **exploración anónima**,
+  no analítica forense, y no identifica visitantes.
+* Variables: `TELEMETRIA_MAX_PETICIONES_MINUTO` (30) y
+  `TELEMETRIA_MAX_PROYECTOS_HUELLA` (30).
 
 ### Evaluación reproducible de NL-to-SQL
 
@@ -482,8 +521,8 @@ Los resultados históricos versionados conservan las cifras anteriores.
 
 ### Evaluación del briefing de Banxico (recuperación y respuestas)
 
-Conjunto sintético de 32 preguntas con el fragmento relevante marcado
-(`app/evals/banxico/preguntas.jsonl`), sobre el corpus real versionado (7
+Conjunto sintético de 36 preguntas con el fragmento relevante marcado
+(`app/evals/banxico/preguntas.jsonl`), sobre el corpus real versionado (12
 fragmentos de 2 publicaciones oficiales del Banco de México).
 
 ```bash
@@ -500,11 +539,15 @@ respaldo.
 | `embeddings-locales` | Bolsa de términos ponderada (TF, L2) con NumPy y coseno — **no** es un modelo de embeddings |
 | `hibrida` | Mezcla lineal 0.5 · léxica normalizada + 0.5 · coseno |
 
-Resultado medido (simulado, 2026-11-22): los tres modos alcanzan `recall@3 = 1.0`
-en las 28 preguntas con respaldo; el léxico obtiene MRR 0.9464 y la variante de
-embeddings locales 0.9286. **No se afirma que los embeddings mejoren** la
-recuperación: con este corpus, la señal léxica es igual o mejor. La abstención
-sin respaldo depende del umbral (coseno ≥ 0.20; híbrido ≥ 0.25), fijado a priori.
+Resultado medido (simulado, 2026-11-26): los tres modos alcanzan `recall@3 = 1.0`
+en las 32 preguntas con respaldo; MRR 0.9375 en léxico, 0.9167 en la variante de
+embeddings locales y 0.9323 en la híbrida. La abstención en las 4 preguntas sin
+respaldo es 1.0 en los tres modos. **No se afirma que los embeddings mejoren** la
+recuperación: con este corpus, la señal léxica es igual o mejor. La compuerta de
+alcance exige al menos un término del dominio (tasa, inflación, PIB, empleo,
+riesgo, pronóstico, etc.) y una puntuación mínima de 3; el coseno se usa solo
+después de esa compuerta. Es una regla calibrada sobre este conjunto, no una
+garantía semántica general.
 
 Vectores reales: `scripts/generar_embeddings_banxico.py --modelo text-embedding-3-small`
 llama al proveedor de embeddings, **genera cargos**, exige
@@ -512,11 +555,13 @@ llama al proveedor de embeddings, **genera cargos**, exige
 ejecutó ni se versionaron vectores; antes de hacerlo revisa formato, tamaño y
 conveniencia de publicarlos.
 
-El corpus **no se amplió** en esta fase: no es posible verificar en línea la
-procedencia de nuevas publicaciones oficiales desde este entorno. Para añadir un
-fragmento, incluye `chunk_id`, `source_id`, `heading`, `content` y la fuente en
-`corpus.json/sources` con `title`, `date`, `kind` y `url` oficial; sin esa
-procedencia verificable no debe añadirse.
+El corpus se amplió el **2026-11-26** con cinco fragmentos del resumen visual
+oficial del Informe trimestral abril–junio 2026 de Banco de México, consultado en
+la URL de la fuente (entorno, mercado laboral, pronóstico de actividad, inflación
+no subyacente y tasa de referencia). No se añadieron fuentes secundarias ni texto
+inventado. Para añadir otro fragmento, incluye `chunk_id`, `source_id`, `heading`,
+`content` y la fuente en `corpus.json/sources` con `title`, `date`, `kind`, `url`
+oficial y `consultado`; sin esa procedencia verificable no debe añadirse.
 
 ### Agente con herramientas · Data Incident Commander (solo lectura)
 
@@ -550,12 +595,14 @@ Evaluación reproducible con proveedor simulado:
 python scripts/evaluar_agente_dic.py
 ```
 
-Conjunto sintético de 12 incidentes (`app/evals/dic/incidentes.jsonl`) con las
-herramientas esperadas y el plan esperado. Resultado simulado del 2026-11-22:
-10/12 cerrados, plan correcto 1.0 y herramientas exactas 1.0 entre los cerrados,
-2.9 pasos de media, 2 violaciones de política bloqueadas y **0 escrituras**; el
-baseline determinista resuelve 12/12. Son cifras del doble simulado, **no** del
-modelo real; no hay coste en USD calculable.
+Conjunto sintético de 12 incidentes (`app/evals/dic/incidentes.jsonl`): 10 casos
+válidos, 1 petición fuera de alcance y 1 intento adversarial (escritura). Resultado
+simulado del 2026-11-26: **10/10 válidos** con plan y herramientas exactos;
+**2/2 bloqueos de seguridad correctos**; 2,9 pasos de media y **0 escrituras**.
+El baseline determinista resuelve 7/10 casos válidos. Los bloqueos correctos ya
+no se cuentan como errores de predicción. Son cifras del doble simulado, **no**
+del modelo real; no hay coste en USD calculable. La corrida real sigue pendiente
+de credenciales y de un tope de gasto verificable.
 
 
 ## Contrato de evidencia del briefing

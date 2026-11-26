@@ -6,14 +6,16 @@
       "title": "Anuncio de Política Monetaria",
       "date": "2026-11-05",
       "kind": "Comunicado",
-      "url": "https://www.banxico.org.mx/publicaciones-y-prensa/anuncios-de-las-decisiones-de-politica-monetaria/%7B43236252-D06E-5231-27E8-058810A86A52%7D.pdf"
+      "url": "https://www.banxico.org.mx/publicaciones-y-prensa/anuncios-de-las-decisiones-de-politica-monetaria/%7B43236252-D06E-5231-27E8-058810A86A52%7D.pdf",
+      "consultado": "2026-11-26"
     },
     {
       "source_id": "BM-2026-08-26",
       "title": "Informe trimestral, abril–junio 2026",
       "date": "2026-08-26",
       "kind": "Informe trimestral",
-      "url": "https://www.banxico.org.mx/publicaciones-y-prensa/resumenes-visuales/informe-trimestral-html/informe-trimestral-abr-jun-00005.html"
+      "url": "https://www.banxico.org.mx/publicaciones-y-prensa/resumenes-visuales/informe-trimestral-html/informe-trimestral-abr-jun-00005.html",
+      "consultado": "2026-11-26"
     }
   ],
   "chunks": [
@@ -120,6 +122,71 @@
         "segundo trimestre",
         "contracción",
         "crecimiento"
+      ]
+    },
+    {
+      "chunk_id": "BM-2026-08-26-MUNDO",
+      "source_id": "BM-2026-08-26",
+      "heading": "Entorno mundial y conflicto en Medio Oriente",
+      "content": "El resumen visual del Informe trimestral abril-junio 2026 señala que la economía mundial creció a un ritmo similar al del trimestre previo, pese a la incertidumbre por el conflicto en Medio Oriente. La inflación general aumentó en varias economías avanzadas y emergentes por el alza de energía y materias primas. En julio, el FMI redujo ligeramente sus previsiones de crecimiento mundial para 2026.",
+      "keywords": [
+        "economía mundial",
+        "Medio Oriente",
+        "FMI",
+        "previsiones",
+        "2026"
+      ]
+    },
+    {
+      "chunk_id": "BM-2026-08-26-EMPLEO",
+      "source_id": "BM-2026-08-26",
+      "heading": "Mercado laboral en el segundo trimestre",
+      "content": "En el segundo trimestre de 2026, los principales indicadores del mercado laboral mexicano presentaron condiciones similares a las del trimestre anterior. Persistió la debilidad: la tasa de participación laboral y la razón de ocupación a población en edad de trabajar siguieron en niveles bajos, y la desocupación nacional y urbana no cambió respecto de enero-marzo de 2026.",
+      "keywords": [
+        "mercado laboral",
+        "empleo",
+        "desocupación",
+        "participación",
+        "2026"
+      ]
+    },
+    {
+      "chunk_id": "BM-2026-08-26-PRONOSTICO-ACTIVIDAD",
+      "source_id": "BM-2026-08-26",
+      "heading": "Pronósticos para la actividad económica",
+      "content": "El Informe trimestral abril-junio 2026 espera que la economía mexicana crezca entre 1.0% y 2.0% en 2026 y entre 1.2% y 2.8% en 2027.",
+      "keywords": [
+        "PIB",
+        "crecimiento",
+        "pronóstico",
+        "2026",
+        "2027"
+      ]
+    },
+    {
+      "chunk_id": "BM-2026-08-26-NO-SUBYACENTE",
+      "source_id": "BM-2026-08-26",
+      "heading": "Inflación no subyacente",
+      "content": "Entre el primer y el segundo trimestre de 2026, la inflación no subyacente aumentó de 2.96% a 3.10%, por presiones en frutas y verduras, gasolina y gas doméstico. En la primera quincena de agosto de 2026 se situó en 0.96%.",
+      "keywords": [
+        "inflación no subyacente",
+        "frutas",
+        "gasolina",
+        "gas",
+        "agosto"
+      ]
+    },
+    {
+      "chunk_id": "BM-2026-08-26-TASA",
+      "source_id": "BM-2026-08-26",
+      "heading": "Tasa de referencia en junio y agosto",
+      "content": "El resumen visual indica que en la reunión de mayo la Junta de Gobierno redujo la tasa de referencia a 6.50%. En las reuniones de junio y agosto la mantuvo sin cambio en 6.50%, al considerar que la postura monetaria era adecuada para enfrentar los retos macroeconómicos.",
+      "keywords": [
+        "tasa de referencia",
+        "6.50",
+        "junio",
+        "agosto",
+        "política monetaria"
       ]
     }
   ],
@@ -249,5 +316,7 @@
         "status": "pronóstico"
       }
     ]
-  }
+  },
+  "version": "1.1.0",
+  "consultado": "2026-11-26"
 }

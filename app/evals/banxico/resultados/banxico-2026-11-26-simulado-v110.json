@@ -1,0 +1,93 @@
+{
+  "conjunto": {
+    "version": "1.1.0",
+    "ruta": "app/evals/banxico/preguntas.jsonl",
+    "preguntas": 36,
+    "sintetico": true
+  },
+  "corpus": {
+    "chunks": 12,
+    "fuentes": [
+      "BM-2026-08-26",
+      "BM-2026-11-05"
+    ],
+    "ampliado_en_esta_fase": true,
+    "motivo": "se añadieron cinco fragmentos del resumen visual oficial del Informe trimestral abril-junio 2026 de Banco de México, consultado el 2026-11-26; no se añadieron fuentes secundarias",
+    "consultado": "2026-11-26"
+  },
+  "ejecucion": {
+    "fecha": "2026-11-26T22:31:48.407859+00:00",
+    "modo": "simulado",
+    "grounding_contract": "verbatim-retrieved-chunks",
+    "proveedor_real": false,
+    "modelo": "sin-modelo (extractiva + simulado)",
+    "vectores_reales": false
+  },
+  "recuperacion": {
+    "lexica": {
+      "metricas": {
+        "preguntas": 36,
+        "con_respaldo": 32,
+        "sin_respaldo": 4,
+        "recall@3": 1.0,
+        "mrr": 0.9375,
+        "abstencion_correcta": 1.0
+      },
+      "fallos_recall": []
+    },
+    "embeddings-locales": {
+      "metricas": {
+        "preguntas": 36,
+        "con_respaldo": 32,
+        "sin_respaldo": 4,
+        "recall@3": 1.0,
+        "mrr": 0.9167,
+        "abstencion_correcta": 1.0
+      },
+      "fallos_recall": []
+    },
+    "hibrida": {
+      "metricas": {
+        "preguntas": 36,
+        "con_respaldo": 32,
+        "sin_respaldo": 4,
+        "recall@3": 1.0,
+        "mrr": 0.9323,
+        "abstencion_correcta": 1.0
+      },
+      "fallos_recall": []
+    }
+  },
+  "respuestas": {
+    "extractiva": {
+      "respuestas_con_evidencia": 32,
+      "citas_en_evidencia": true,
+      "abstencion_en_sin_respaldo": 1.0,
+      "modos": [
+        "extractiva",
+        "sin-coincidencias"
+      ]
+    },
+    "citas_inventadas_bloqueadas": true,
+    "proveedor_simulado": {
+      "cita_valida": {
+        "modo": "llm-grounded",
+        "menciona_fuente": true
+      },
+      "cita_inventada": {
+        "modo": "extractiva-respaldo",
+        "cita_en_evidencia": false
+      }
+    }
+  },
+  "costo": {
+    "usd": "no calculable",
+    "motivo": "no se hizo ninguna llamada al proveedor; no hay precios verificados en el repositorio"
+  },
+  "notas": [
+    "Conjunto sintético de 32 preguntas; los fragmentos relevantes están marcados a mano.",
+    "`embeddings-locales` es una bolsa de términos ponderada con NumPy, no un modelo de embeddings.",
+    "`embeddings-openai` requiere generar y versionar vectores con el comando explícito; no se ejecutó.",
+    "La recuperación léxica sigue siendo el baseline y el fallback."
+  ]
+}

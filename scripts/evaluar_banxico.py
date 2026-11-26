@@ -175,11 +175,13 @@ def main(argv: list[str] | None = None) -> int:
         "corpus": {
             "chunks": len(fragmentos),
             "fuentes": sorted({fila["source_id"] for fila in fragmentos}),
-            "ampliado_en_esta_fase": False,
+            "ampliado_en_esta_fase": True,
             "motivo": (
-                "no se añadieron publicaciones nuevas: no es posible verificar en línea "
-                "la procedencia de nuevos documentos oficiales desde este entorno"
+                "se añadieron cinco fragmentos del resumen visual oficial del Informe "
+                "trimestral abril-junio 2026 de Banco de México, consultado el 2026-11-26; "
+                "no se añadieron fuentes secundarias"
             ),
+            "consultado": (servicio.corpus.get("consultado") if isinstance(servicio.corpus, dict) else None),
         },
         "ejecucion": {
             "fecha": datetime.now(timezone.utc).isoformat(),

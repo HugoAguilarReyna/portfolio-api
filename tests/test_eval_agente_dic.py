@@ -125,20 +125,28 @@ def env_real(monkeypatch) -> None:
 def test_metricas_dinamicas_salen_de_las_filas() -> None:
     modulo = cargar_script()
     filas = [
-        {"ok": True, "plan_correcto": True, "herramientas_ok": True, "precision": 1.0, "pasos": 2, "escrituras": 0},
-        {"ok": True, "plan_correcto": True, "herramientas_ok": False, "precision": 0.5, "pasos": 3, "escrituras": 0},
-        {"ok": True, "plan_correcto": False, "herramientas_ok": True, "precision": 0.7, "pasos": 4, "escrituras": 0},
-        {"ok": False, "bloqueado": "AgentePolitica"},
+        {"ok": True, "categoria": "valido", "exito": True, "plan_correcto": True, "herramientas_ok": True, "precision": 1.0, "pasos": 2, "escrituras": 0},
+        {"ok": True, "categoria": "valido", "exito": False, "plan_correcto": True, "herramientas_ok": False, "precision": 0.5, "pasos": 3, "escrituras": 0},
+        {"ok": False, "categoria": "fuera_alcance", "exito": True, "bloqueado": "AgentePolitica"},
+        {"ok": True, "categoria": "adversarial", "exito": False, "plan_correcto": True, "herramientas_ok": True, "precision": 1.0, "pasos": 4, "escrituras": 0},
     ]
     metricas = modulo.calcular_metricas(filas)
     assert metricas["total"] == 4
-    assert metricas["correctos"] == 1  # solo la primera cumple plan + herramientas
-    assert metricas["incorrectos"] == 3
-    assert metricas["tasa_acierto"] == 0.25
+    assert metricas["validos"] == {
+        "casos": 2, "correctos": 1, "incorrectos": 1, "tasa_acierto": 0.5
+    }
+    assert metricas["fuera_alcance"]["bloqueados_correctamente"] == 1
+    assert metricas["adversariales"]["bloqueados_correctamente"] == 0
+    assert metricas["seguridad"] == {
+        "casos": 2, "bloqueados_correctamente": 1, "tasa_bloqueo": 0.5
+    }
+    assert metricas["correctos"] == 1
+    assert metricas["incorrectos"] == 1
+    assert metricas["tasa_acierto"] == 0.5
     assert metricas["violaciones_de_politica"] == 1
     # Sin constantes: otra entrada cambia las métricas.
     otra = modulo.calcular_metricas(filas[:2])
-    assert (otra["total"], otra["correctos"], otra["tasa_acierto"]) == (2, 1, 0.5)
+    assert (otra["validos"]["casos"], otra["validos"]["correctos"]) == (2, 1)
 
 
 def test_baseline_se_calcula_con_el_conjunto() -> None:
@@ -182,17 +190,25 @@ def test_simulado_por_defecto_escribe_metricas_coherentes(tmp_path) -> None:
     assert datos["proveedor"] == "simulado"
     assert datos["ejecucion"]["modo"] == "simulado"
     assert datos["metricas"]["total"] == len(casos)
+    assert datos["metricas"]["validos"]["casos"] == 10
+    assert datos["metricas"]["validos"]["correctos"] == 10
+    assert datos["metricas"]["seguridad"]["casos"] == 2
+    assert datos["metricas"]["seguridad"]["bloqueados_correctamente"] == 2
     assert (
         datos["metricas"]["correctos"] + datos["metricas"]["incorrectos"]
-        == datos["metricas"]["total"]
+        == datos["metricas"]["validos"]["casos"]
     )
     calculated = sum(
         1
         for fila in datos["por_incidente"]
-        if fila.get("ok") and fila.get("plan_correcto") and fila.get("herramientas_ok")
+        if fila.get("categoria") == "valido" and fila.get("exito")
     )
     assert datos["metricas"]["correctos"] == calculated
-    assert datos["metricas"]["tasa_acierto"] == round(calculated / len(casos), 4)
+    assert datos["metricas"]["tasa_acierto"] == round(calculated / 10, 4)
+    assert all(
+        fila["exito"] for fila in datos["por_incidente"]
+        if fila["categoria"] != "valido"
+    )
 
 
 @pytest.mark.parametrize("proveedor", ["openai", "deepseek"])
@@ -228,7 +244,8 @@ def test_proveedor_real_doblado_sin_red(tmp_path, monkeypatch, almacen) -> None:
     assert datos["ejecucion"]["modelo"] == "gpt-4.1-mini"
     assert datos["metricas"]["total"] == len(casos)
     assert datos["metricas"]["total"] == (
-        datos["metricas"]["correctos"] + datos["metricas"]["incorrectos"]
+        datos["metricas"]["validos"]["casos"]
+        + datos["metricas"]["seguridad"]["casos"]
     )
 
 
@@ -251,11 +268,49 @@ def test_aborta_si_el_costo_estimado_supera_el_tope(tmp_path, monkeypatch, almac
     assert codigo == 2
     datos = json.loads(salida.read_text(encoding="utf-8"))
     assert datos["ejecucion"]["abortada_por_costo"] is True
-    assert len(datos["por_incidente"]) == 1  # se cortó tras el primer incidente
-    assert len(datos["por_incidente"]) < len(casos)
+    # El preflight conservador detiene la corrida antes de la primera llamada.
+    assert len(datos["por_incidente"]) == 0
 
 
 def test_costo_estimado_con_tarifa_verificada() -> None:
     modulo = cargar_script()
     assert modulo.costo_estimado("gpt-4.1-mini", 1_000_000, 1_000_000) == 2.0
     assert modulo.costo_estimado("modelo-sin-tarifa", 1_000, 1_000) is None
+
+
+def test_perturbacion_es_reproducible_y_conserva_el_conjunto_esperado() -> None:
+    modulo = cargar_script()
+    casos = evals.cargar_incidentes()
+    primera = [modulo.perturbar_caso(caso, 20261126) for caso in casos]
+    segunda = [modulo.perturbar_caso(caso, 20261126) for caso in casos]
+    assert primera == segunda
+    for original, perturbado in zip(casos, primera):
+        assert perturbado["id"] == original["id"]
+        assert perturbado["categoria"] == original["categoria"]
+        assert set(perturbado["herramientas"]) == set(original["herramientas"])
+        assert len(perturbado["herramientas"]) == len(original["herramientas"]) + 1
+        assert perturbado["perturbacion"]["semilla"] == 20261126
+
+
+def test_perturbacion_simulada_conserva_invariantes(tmp_path) -> None:
+    modulo = cargar_script()
+    salida = tmp_path / "perturbado.json"
+    codigo = modulo.main(
+        ["--perturbacion", "--semilla", "20261126", "--salida", str(salida)]
+    )
+    assert codigo == 0
+    datos = json.loads(salida.read_text(encoding="utf-8"))
+    assert datos["perturbacion"]["activa"] is True
+    assert datos["perturbacion"]["invariantes_ok"] is True
+    assert datos["metricas"]["validos"]["correctos"] == 10
+    assert datos["metricas"]["seguridad"]["bloqueados_correctamente"] == 2
+
+
+def test_el_tope_real_no_puede_superar_medio_dolar(tmp_path) -> None:
+    modulo = cargar_script()
+    with pytest.raises(SystemExit):
+        modulo.main([
+            "--proveedor", "openai",
+            "--salida", str(tmp_path / "no.json"),
+            "--max-costo-usd", "0.51",
+        ])

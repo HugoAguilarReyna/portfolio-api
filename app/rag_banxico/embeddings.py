@@ -1,6 +1,6 @@
 """Recuperación por embeddings e híbrida para el briefing de Banxico.
 
-El corpus es pequeño (7 fragmentos, dos comunicados oficiales), así que basta
+El corpus es pequeño (12 fragmentos, dos publicaciones oficiales), así que basta
 NumPy y similitud coseno: no se añade infraestructura vectorial.
 
 Hay dos fuentes de vectores, explícitas y separadas:
@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from app.rag_banxico.service import terminos
+from app.rag_banxico.service import puntuar, terminos
 
 MODOS = ("lexica", "embeddings-locales", "embeddings-openai", "hibrida")
 UMBRAL_COSENO = 0.20
@@ -92,8 +92,8 @@ def _top(filas: list[tuple[dict[str, Any], float]], limite: int = 3) -> list[dic
 
 
 def recuperar_lexica(pregunta: str, fragmentos: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Baseline léxico: solo devuelve fragmentos con coincidencia real."""
-    return _top([(fila, score) for fila, score in _lexico(pregunta, fragmentos) if score > 0])
+    """Baseline léxico: usa el mismo puntaje y umbral que el servicio."""
+    return puntuar(pregunta, fragmentos)
 
 
 def recuperar_embeddings(
@@ -163,6 +163,11 @@ def recuperar(
     *,
     vectores: dict[str, list[float]] | None = None,
 ) -> list[dict[str, Any]]:
+    # Compuerta de alcance común: si la señal léxica no alcanza el mínimo, no
+    # tiene sentido puntuar con coseno (una fecha o una palabra genérica puede
+    # producir un falso positivo). El servicio usa la misma regla para responder.
+    if not puntuar(pregunta, fragmentos):
+        return []
     if modo == "lexica":
         return recuperar_lexica(pregunta, fragmentos)
     if modo == "embeddings-locales":

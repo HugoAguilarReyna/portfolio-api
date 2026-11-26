@@ -147,6 +147,23 @@ async def lifespan(app: FastAPI):
     from app.llm.configuracion import validar_arranque
 
     validar_arranque(settings, logger)
+    # Catálogo cerrado de la telemetría: se valida al arrancar y se cachea. Si
+    # falta o no cumple el esquema, las rutas de escritura responden 503.
+    try:
+        from app.services.catalogo_ids import catalogo_ids
+
+        catalogo = catalogo_ids()
+        logger.info(
+            "Catálogo de telemetría cargado: %s proyectos y %s áreas",
+            len(catalogo.proyectos),
+            len(catalogo.areas),
+        )
+    except Exception:  # noqa: BLE001 - la API sigue sirviendo; telemetría falla cerrada
+        logger.error(
+            "No se pudo cargar app/data/catalogo_ids.json: la telemetría de "
+            "proyectos quedará en 503 hasta sincronizar el catálogo",
+            exc_info=True,
+        )
     db = init_database(settings)
     app.state.database = db
 

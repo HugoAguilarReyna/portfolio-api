@@ -50,6 +50,7 @@ from app.db.mongo import (
     MARKETING_RESUMEN,
     MARKETING_USUARIOS,
     METRICAS_VISITAS,
+    METRICAS_VISITAS_LIMITES,
 )
 
 logger = logging.getLogger(__name__)
@@ -363,6 +364,14 @@ INDEX_SPECS: list[tuple[str, str, list[tuple[str, int]], dict]] = [
     (
         METRICAS_VISITAS,
         "metricas_visitas_ttl",
+        [("expira_en", ASCENDING)],
+        {"expireAfterSeconds": 0},
+    ),
+    # Contadores de frecuencia: caducan solos (TTL de 2 h) y guardan solo un
+    # contador por huella y minuto, nunca la IP.
+    (
+        METRICAS_VISITAS_LIMITES,
+        "metricas_visitas_limites_ttl",
         [("expira_en", ASCENDING)],
         {"expireAfterSeconds": 0},
     ),

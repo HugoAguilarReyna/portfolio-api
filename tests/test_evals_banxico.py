@@ -46,10 +46,13 @@ def test_conjunto_de_preguntas() -> None:
             assert pregunta["relevantes"] == []
 
 
-def test_corpus_sin_ampliar_y_sin_secretos() -> None:
+def test_corpus_ampliado_y_sin_secretos() -> None:
     corpus = servicio().corpus
-    assert len(corpus["chunks"]) == 7
+    assert len(corpus["chunks"]) == 12
     assert {fila["source_id"] for fila in corpus["chunks"]} == {"BM-2026-11-05", "BM-2026-08-26"}
+    ids = {fila["chunk_id"] for fila in corpus["chunks"]}
+    assert "BM-2026-08-26-PRONOSTICO-ACTIVIDAD" in ids
+    assert "BM-2026-08-26-NO-SUBYACENTE" in ids
     crudo = evals.PREGUNTAS.read_text(encoding="utf-8")
     for patron in ("sk-", "Bearer ", "github_pat_", "password"):
         assert patron not in crudo
@@ -94,10 +97,23 @@ def test_modos_de_recuperacion_son_deterministas_y_cubren_el_corpus() -> None:
         assert metricas["recall@3"] == 1.0, modo
 
 
-def test_lexico_se_abstiene_sin_coincidencias() -> None:
+def test_todos_los_modos_se_abstienen_sin_coincidencias() -> None:
     fragmentos = servicio().corpus["chunks"]
-    assert embeddings.recuperar("lexica", "capital de Francia", fragmentos) == []
-    assert embeddings.recuperar("lexica", "¿cuál es la tasa objetivo?", fragmentos)
+    for modo in ("lexica", "embeddings-locales", "hibrida"):
+        assert embeddings.recuperar(modo, "capital de Francia", fragmentos) == [], modo
+        assert embeddings.recuperar(modo, "¿cuál es la tasa objetivo?", fragmentos), modo
+
+
+def test_el_umbral_deja_fuera_las_cuatro_preguntas_sin_respaldo() -> None:
+    fragmentos = servicio().corpus["chunks"]
+    sin_respaldo = [p for p in evals.cargar_preguntas() if not p["relevantes"]]
+    assert len(sin_respaldo) == 4
+    for pregunta in sin_respaldo:
+        for modo in ("lexica", "embeddings-locales", "hibrida"):
+            assert embeddings.recuperar(modo, pregunta["pregunta"], fragmentos) == [], (
+                pregunta["id"],
+                modo,
+            )
 
 
 def test_citas_inventadas_degradan_a_extractiva(monkeypatch) -> None:
