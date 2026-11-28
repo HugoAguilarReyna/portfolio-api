@@ -150,7 +150,7 @@ def post_chat(
 
     peticion = Request(
         _endpoint(settings),
-        data=json.dumps(payload).encode("utf-8"),
+        data=presupuesto.serializar(payload),
         headers={
             "Authorization": f"Bearer {settings.llm_api_key}",
             "Content-Type": "application/json",

@@ -63,6 +63,15 @@ def _payload(*, max_tokens: int = 100, tools: bool = False) -> dict:
     return datos
 
 
+def test_cota_usa_los_mismos_bytes_que_el_cuerpo() -> None:
+    """La cota no puede subestimar el cuerpo real, ni con texto no ASCII."""
+    gestor = presupuesto.PresupuestoMonetario(1.0, TARIFA_PRUEBA)
+    payload = _payload(tools=True)
+    payload["messages"][0]["content"] = "Añó ómicron: «dato» — 100 %."
+    reserva = gestor.reservar(payload)
+    assert reserva.entrada_bytes == len(presupuesto.serializar(payload))
+
+
 def test_cota_incluye_esquemas_de_herramientas_y_maximo_de_salida() -> None:
     gestor = presupuesto.PresupuestoMonetario(1.0, TARIFA_PRUEBA)
     simple = gestor.cota_usd(_payload(max_tokens=100))
@@ -70,6 +79,31 @@ def test_cota_incluye_esquemas_de_herramientas_y_maximo_de_salida() -> None:
     mas_salida = gestor.cota_usd(_payload(max_tokens=200))
     assert con_herramientas > simple
     assert mas_salida > simple
+
+
+def test_post_chat_envia_exactamente_los_bytes_reservados(monkeypatch) -> None:
+    visto = {}
+
+    def urlopen(peticion, *args, **kwargs):
+        visto["bytes"] = len(peticion.data)
+        return _Respuesta({"choices": [{"message": {"content": "ok"}}]})
+
+    monkeypatch.setattr(cliente, "urlopen", urlopen)
+    gestor = presupuesto.PresupuestoMonetario(0.01, TARIFA_PRUEBA)
+    reservar_original = gestor.reservar
+
+    def reservar(payload):
+        reserva = reservar_original(payload)
+        visto["reserva"] = reserva
+        return reserva
+
+    gestor.reservar = reservar  # type: ignore[method-assign]
+    payload = _payload(tools=True)
+    payload["messages"][0]["content"] = "Añó ómicron: «dato» — 100 %."
+    with presupuesto.usar(gestor), contexto.reserva_de_run():
+        cliente.post_chat(_settings(), payload)
+
+    assert visto["bytes"] == visto["reserva"].entrada_bytes
 
 
 def test_uso_reportado_concilia_y_libera_la_reserva(monkeypatch) -> None:

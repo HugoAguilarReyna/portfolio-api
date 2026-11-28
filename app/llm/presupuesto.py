@@ -5,7 +5,8 @@ de cada POST. La reserva se calcula con una cota superior deliberadamente
 conservadora:
 
 * entrada: todos los bytes UTF-8 del payload serializado (mensajes, esquemas de
-  herramientas, modelo y parámetros); un token BPE nunca ocupa menos de un byte;
+  herramientas, modelo y parámetros) más 256 tokens de margen para la plantilla
+  del chat y las herramientas; un token BPE nunca ocupa menos de un byte;
 * salida: el `max_tokens` efectivo que ya recortó el transporte.
 
 Cada llamada, incluidos los reintentos que haga el bucle del agente, pasa por la
@@ -29,6 +30,10 @@ from typing import Any, Iterator, Mapping
 
 #: USD por millón de tokens: (entrada, salida).
 Tarifas = Mapping[str, tuple[float, float]]
+
+#: Margen fijo para los tokens de plantilla del chat y de las herramientas que
+#: el proveedor añade fuera del JSON. El cuerpo ya se cuenta byte a byte.
+MARGEN_ENTRADA_TOKENS = 256
 
 _ACTIVO: ContextVar["PresupuestoMonetario | None"] = ContextVar(
     "llm_presupuesto_monetario", default=None
@@ -60,6 +65,7 @@ class Reserva:
     id: int
     modelo: str
     entrada_bytes: int
+    entrada_tokens_cota: int
     salida_tokens: int
     usd: float
 
@@ -77,6 +83,11 @@ def usar(gestor: "PresupuestoMonetario") -> Iterator["PresupuestoMonetario"]:
         yield gestor
     finally:
         _ACTIVO.reset(token)
+
+
+def serializar(payload: Mapping[str, Any]) -> bytes:
+    """Cuerpo exacto que envía el transporte; la cota usa estos mismos bytes."""
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
 def _entero_no_negativo(valor: Any) -> int | None:
@@ -152,34 +163,29 @@ class PresupuestoMonetario:
     def _disponible_sin_candado(self) -> float:
         return max(0.0, self.tope_usd - self._gastado_usd - self._reservado_usd)
 
-    def _tarifa_de(self, modelo: str) -> tuple[float, float]:
-        return self.validar_tarifa(modelo)
-
     def cota_usd(self, payload: Mapping[str, Any]) -> float:
         """Cota superior en USD de una solicitud (sin retenerla todavía)."""
-        return self._cota(payload)[2]
+        return self._cota(payload)[3]
 
-    def _cota(self, payload: Mapping[str, Any]) -> tuple[int, int, float]:
+    def _cota(self, payload: Mapping[str, Any]) -> tuple[int, int, int, float]:
         modelo = str(payload.get("model") or "")
-        entrada_tarifa, salida_tarifa = self._tarifa_de(modelo)
+        entrada_tarifa, salida_tarifa = self.validar_tarifa(modelo)
         salida = _entero_no_negativo(payload.get("max_tokens"))
         if salida is None:
             raise PresupuestoInvalido(
                 "La solicitud no declara un máximo de tokens de salida; no se puede acotar."
             )
         try:
-            serializado = json.dumps(
-                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
+            entrada_bytes = len(serializar(payload))
         except (TypeError, ValueError) as exc:
             raise PresupuestoInvalido("La solicitud no se puede serializar para acotarla.") from exc
-        entrada_bytes = len(serializado)
-        usd = entrada_bytes * entrada_tarifa / 1e6 + salida * salida_tarifa / 1e6
-        return entrada_bytes, salida, usd
+        entrada_tokens = entrada_bytes + MARGEN_ENTRADA_TOKENS
+        usd = entrada_tokens * entrada_tarifa / 1e6 + salida * salida_tarifa / 1e6
+        return entrada_bytes, entrada_tokens, salida, usd
 
     def reservar(self, payload: Mapping[str, Any]) -> Reserva:
         """Retiene una cota antes de la solicitud o falla sin tocar la red."""
-        entrada_bytes, salida, usd = self._cota(payload)
+        entrada_bytes, entrada_tokens, salida, usd = self._cota(payload)
         modelo = str(payload.get("model") or "")
         with self._candado:
             disponible = self._disponible_sin_candado()
@@ -194,6 +200,7 @@ class PresupuestoMonetario:
                 id=self._siguiente_id,
                 modelo=modelo,
                 entrada_bytes=entrada_bytes,
+                entrada_tokens_cota=entrada_tokens,
                 salida_tokens=salida,
                 usd=usd,
             )
@@ -214,13 +221,13 @@ class PresupuestoMonetario:
         uso = sobre.get("usage") if isinstance(sobre, dict) else None
         if not isinstance(uso, dict):
             return None
-        entrada_tarifa, salida_tarifa = self._tarifa_de(reserva.modelo)
+        entrada_tarifa, salida_tarifa = self.validar_tarifa(reserva.modelo)
         prompt = _entero_no_negativo(uso.get("prompt_tokens"))
         completion = _entero_no_negativo(uso.get("completion_tokens"))
         if prompt is not None or completion is not None:
             # Si el proveedor solo informa una parte, la otra se mantiene en su
             # cota superior: nunca se libera dinero que no se pueda justificar.
-            entrada = prompt if prompt is not None else reserva.entrada_bytes
+            entrada = prompt if prompt is not None else reserva.entrada_tokens_cota
             salida = completion if completion is not None else reserva.salida_tokens
             return entrada * entrada_tarifa / 1e6 + salida * salida_tarifa / 1e6
         total = _entero_no_negativo(uso.get("total_tokens"))

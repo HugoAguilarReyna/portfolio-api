@@ -68,8 +68,10 @@ run, escribe archivos, toca Atlas o ejecuta reparaciones.
 - Salida por llamada acotada a `min(LLM_MAX_TOKENS, 300)`.
 - **Presupuesto monetario del evaluador:** `app/llm/presupuesto.py` activa una
   reserva antes de cada POST del transporte compartido. La cota suma los bytes
-  UTF-8 del payload (mensajes, esquemas de herramientas, modelo y parámetros) a
-  la tarifa de entrada, más el `max_tokens` efectivo a la tarifa de salida. Cada
+  UTF-8 del payload (mensajes, esquemas de herramientas, modelo y parámetros) más
+  256 tokens de margen de plantilla a la tarifa de entrada, más el `max_tokens`
+  efectivo a la tarifa de salida. El cuerpo que se envía es exactamente el mismo
+  que se acota. Cada
   reintento del agente vuelve a reservar. Con `usage` se concilia y se libera lo
   no consumido; un timeout, 5xx o respuesta sin uso conserva la reserva porque
   pudo cobrarse. Un modelo sin tarifa verificada falla antes de la primera
@@ -210,7 +212,7 @@ python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
 node tools/verificar-agent-flow.mjs
 ```
 
-En la ejecución local: **528 passed, 11 skipped** en la suite completa; **46
+En la ejecución local: **530 passed, 11 skipped** en la suite completa; **48
 pruebas específicas** del agente/evaluación/presupuesto/MCP y **31 comprobaciones**
 del flujo de navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
 reales descargados. El entorno de desarrollo requirió un shim local de pyOpenSSL
