@@ -1,0 +1,74 @@
+{
+  "transporte": "stdio",
+  "servidor": "banxico-evidence",
+  "descubrimiento": {
+    "herramientas": [
+      {
+        "nombre": "banxico_buscar_fragmentos",
+        "descripcion": "Busca hasta tres fragmentos del corpus Banxico con recuperación léxica. No usa embeddings, LLM ni escrituras; devuelve extractos acotados.",
+        "schema": {
+          "properties": {
+            "consulta": {
+              "title": "Consulta",
+              "type": "string"
+            },
+            "limite": {
+              "default": 3,
+              "title": "Limite",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "consulta"
+          ],
+          "title": "banxico_buscar_fragmentosArguments",
+          "type": "object"
+        }
+      }
+    ]
+  },
+  "invocacion": {
+    "herramienta": "banxico_buscar_fragmentos",
+    "consulta": "¿cuál es la tasa objetivo de Banco de México?",
+    "resultado": {
+      "abstenido": false,
+      "fragmentos": [
+        {
+          "chunk_id": "BM-2026-11-05-TASA",
+          "source_id": "BM-2026-11-05",
+          "titulo": "Anuncio de Política Monetaria",
+          "fecha": "2026-11-05",
+          "extracto": "El 5 de noviembre de 2026, la Junta de Gobierno redujo en 25 puntos base el objetivo de la tasa interbancaria a un día, a 6.25%. La medida entró en vigor el 6 de noviembre de 2026.",
+          "score": 3
+        },
+        {
+          "chunk_id": "BM-2026-11-05-PRONOSTICO",
+          "source_id": "BM-2026-11-05",
+          "titulo": "Anuncio de Política Monetaria",
+          "fecha": "2026-11-05",
+          "extracto": "El cuadro del comunicado presenta para el INPC 3.3% en 2026-T3, 3.7% en 2026-T4 y 3.0% en 2027-T4. El Banco de México anticipa la convergencia a la meta de 3% en el cuarto trimestre de 2027.",
+          "score": 2
+        }
+      ],
+      "consulta": "¿cuál es la tasa objetivo de Banco de México?",
+      "limite_aplicado": 2,
+      "modo_recuperacion": "corpus-local",
+      "solo_lectura": true,
+      "fuente": "corpus Banxico versionado"
+    }
+  },
+  "abstencion": {
+    "consulta": "zzzz qqqq xxxx",
+    "resultado": {
+      "abstenido": true,
+      "fragmentos": [],
+      "consulta": "zzzz qqqq xxxx",
+      "limite_aplicado": 1,
+      "modo_recuperacion": "corpus-local",
+      "solo_lectura": true,
+      "fuente": "corpus Banxico versionado"
+    }
+  },
+  "solo_lectura": true,
+  "servidor_expuesto_publicamente": false
+}

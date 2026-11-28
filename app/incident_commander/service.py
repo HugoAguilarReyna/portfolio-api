@@ -6,10 +6,10 @@ snapshot fuente permanece intacto. La aprobación solo simula una reparación so
 una copia temporal y genera un recibo local.
 
 La consulta a un proveedor compatible con OpenAI es **opcional y consultiva**:
-solo se ofrece si `LLM_BASE_URL`, `LLM_API_KEY` y `LLM_MODEL` están configurados,
-devuelve una recomendación validada (`quarantine`, `backfill` o `fullreload`) y
-nunca aprueba, ejecuta ni escribe: la decisión humana y la simulación en memoria
-siguen siendo las únicas vías de cambio.
+el agente supervisor LangGraph (ver `grafo.py`) elige herramientas de solo
+lectura y devuelve una recomendación validada (`quarantine`, `backfill` o
+`fullreload`); nunca aprueba, ejecuta ni escribe. La decisión humana y la
+simulación en memoria siguen siendo las únicas vías de cambio.
 """
 
 from __future__ import annotations
@@ -97,6 +97,26 @@ PLAN_META: dict[str, dict[str, Any]] = {
         "blocked_reason": "La política bloquea la imputación de valores.",
     },
 }
+
+#: Linaje declarado de la demo. Es una fixture del escenario, no un catálogo
+#: corporativo observado; las herramientas lo marcan explícitamente como tal.
+LINEAGE: dict[str, list[dict[str, str]]] = {
+    GDP: [
+        {"id": "mart_economia", "tipo": "tabla", "nombre": "mart.economia_anual"},
+        {"id": "briefing_ejecutivo", "tipo": "reporte", "nombre": "Briefing ejecutivo"},
+        {"id": "api_consultas", "tipo": "servicio", "nombre": "API de consultas"},
+    ],
+    "FP.CPI.TOTL.ZG": [
+        {"id": "mart_precios", "tipo": "tabla", "nombre": "mart.precios_anual"},
+        {"id": "tablero_inflacion", "tipo": "tablero", "nombre": "Tablero de inflación"},
+        {"id": "briefing_ejecutivo", "tipo": "reporte", "nombre": "Briefing ejecutivo"},
+    ],
+    "SL.UEM.TOTL.ZS": [
+        {"id": "mart_empleo", "tipo": "tabla", "nombre": "mart.empleo_anual"},
+        {"id": "tablero_laboral", "tipo": "tablero", "nombre": "Tablero laboral"},
+    ],
+}
+
 
 
 class SnapshotError(RuntimeError):
@@ -356,11 +376,15 @@ class IncidentCommander:
         return {
             "ok": True,
             "demo": "Data Incident Commander",
-            "mode": "flujo-determinista-con-consulta-opcional",
+            "mode": "flujo-determinista-y-agente-langgraph",
             "llm": self.llm_configurado,
             "llm_model": (str(self.settings.llm_model).strip() or None) if self.llm_configurado else None,
-            "llm_mode": "consulta-json-validada" if self.llm_configurado else None,
+            "llm_mode": "agente-langgraph-solo-lectura" if self.llm_configurado else None,
             "llm_executes": False,
+            "agent_flow": "langgraph",
+            "agent_max_steps": int(self.settings.llm_agente_max_pasos),
+            "agent_max_seconds": float(self.settings.llm_agente_max_segundos),
+            "agent_budget_tokens": int(self.settings.llm_agente_presupuesto_tokens),
             "atlas": False,
             "snapshot_date": self.snapshot.get("snapshot_date"),
             "dataset_id": self.snapshot.get("dataset_id"),
@@ -382,6 +406,19 @@ class IncidentCommander:
             "source_digest": self.source_digest,
             "sources": self.snapshot.get("sources"),
             "period": [self.snapshot.get("period_start"), self.snapshot.get("period_end")],
+        }
+
+    def linaje_summary(self, indicator_code: str = GDP) -> dict[str, Any]:
+        """Activos declarados aguas abajo del indicador (fixture de la demo)."""
+        if indicator_code not in LINEAGE:
+            raise ScenarioError("Indicador de linaje no reconocido.")
+        activos = copy.deepcopy(LINEAGE[indicator_code])
+        return {
+            "indicador": indicator_code,
+            "activos": activos,
+            "dependencias": len(activos),
+            "fixture": True,
+            "nota": "Linaje declarado del escenario; no es un catálogo corporativo observado.",
         }
 
     def crear_run(self, scenario_id: str) -> dict[str, Any]:

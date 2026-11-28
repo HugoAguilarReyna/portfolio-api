@@ -27,7 +27,7 @@ def ajustes(**extra) -> Settings:
         "llm_cuota_hmac_key": CLAVE,
         "llm_consultas_por_minuto": 120,
         "llm_agente_max_pasos": 6,
-        "llm_agente_presupuesto_tokens": 1_800,
+        "llm_agente_presupuesto_tokens": 18_000,
     }
     base.update(extra)
     return Settings(**base)
@@ -76,7 +76,7 @@ def plan_final(plan: str = "quarantine") -> dict:
                         {
                             "recommendation": plan,
                             "justification": "La evidencia sostiene el plan.",
-                            "evidence": ["Una validación falla en la copia."],
+                            "evidence": ["validaciones: Una validación falla en la copia."],
                             "risks": ["Depende del cierre de la validación."],
                         }
                     )
@@ -89,11 +89,11 @@ def plan_final(plan: str = "quarantine") -> dict:
 
 def test_catalogo_solo_lectura() -> None:
     nombres = set(herramientas.HERRAMIENTAS)
-    assert nombres == {"estado_run", "validaciones", "matriz_planes", "catalogo_planes", "snapshot"}
+    assert nombres == {"estado_run", "perfil_copia", "linaje", "validaciones", "matriz_planes", "catalogo_planes", "snapshot"}
     for prohibido in ("aprobar", "escribir_tabla", "aplicar_plan", "backfill"):
         assert prohibido not in nombres
     esquemas = herramientas.esquemas()
-    assert len(esquemas) == 5
+    assert len(esquemas) == 7
     assert all(esquema["type"] == "function" for esquema in esquemas)
     assert {esquema["function"]["name"] for esquema in esquemas} == nombres
 
@@ -108,8 +108,8 @@ def test_herramienta_desconocida_y_argumentos_invalidos() -> None:
     with pytest.raises(herramientas.ArgumentosInvalidos):
         herramientas.ejecutar(control, run["run_id"], "estado_run", {"extra": 1})
     estado = herramientas.ejecutar(control, run["run_id"], "estado_run", None)
-    assert estado["run_id"] == run["run_id"]
-    assert estado["aprobado"] is False
+    assert estado["datos"]["run_id"] == run["run_id"]
+    assert estado["datos"]["aprobado"] is False
 
 
 def test_agente_cierra_con_herramientas_y_plan(monkeypatch) -> None:
@@ -189,7 +189,7 @@ def test_ruta_del_agente_200_y_404(monkeypatch) -> None:
 
     ok = cliente_http.post(f"/api/v1/incident-commander/runs/{run['run_id']}/agent")
     assert ok.status_code == 200
-    assert ok.json()["modo"] == "openai-tools"
+    assert ok.json()["modo"] == "langgraph-openai-tools"
     assert cliente_http.post("/api/v1/incident-commander/runs/DI-NO-EXISTE/agent").status_code == 404
 
 

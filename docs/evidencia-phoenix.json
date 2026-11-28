@@ -1,0 +1,87 @@
+{
+  "fecha": "2026-11-28",
+  "phoenix": {
+    "imagen": "arizephoenix/phoenix:22.1.0",
+    "url": "http://127.0.0.1:6006",
+    "proyecto": "portafolio-dic",
+    "autenticacion": "desactivada",
+    "volumen": "portfolio-phoenix_phoenix_data",
+    "sqlite": "/mnt/data/phoenix.db"
+  },
+  "ui": {
+    "verificada": true,
+    "proyecto_visible": true,
+    "traces_visibles": 2,
+    "corridas_verificadas": 2,
+    "captura": "docs/evidencia-phoenix-ui.png",
+    "nota": "Dos detalles abiertos desde la tabla; spans y atributos visibles bajo cada run."
+  },
+  "corridas": [
+    {
+      "caso": "missing-ruta-perfil-linaje",
+      "run_id": "DI-D051C21896",
+      "trace_id": "81de53af5521f9d41861ac9e0688d33b",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "completado",
+      "herramientas": "perfil_copia,linaje",
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "tokens": 360,
+      "tokens_familia": {
+        "completion": 240,
+        "prompt": 120,
+        "total": 360
+      },
+      "spans": 6,
+      "spans_modelo": 3,
+      "spans_herramientas": 2
+    },
+    {
+      "caso": "schema-ruta-perfil-validaciones",
+      "run_id": "DI-1DF346D91F",
+      "trace_id": "e4bcca872fc4d354387868111d865618",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "completado",
+      "herramientas": "perfil_copia,validaciones",
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "tokens": 360,
+      "tokens_familia": {
+        "completion": 240,
+        "prompt": 120,
+        "total": 360
+      },
+      "spans": 6,
+      "spans_modelo": 3,
+      "spans_herramientas": 2
+    }
+  ],
+  "sanitizacion": {
+    "prompts": false,
+    "argumentos_de_herramientas": false,
+    "respuestas_crudas": false,
+    "secretos": false,
+    "ip": false,
+    "campos_prohibidos_encontrados": [],
+    "input_output_ausentes": true
+  },
+  "persistencia": {
+    "reinicio_contenedor": true,
+    "trace_ids_antes": [
+      "81de53af5521f9d41861ac9e0688d33b",
+      "e4bcca872fc4d354387868111d865618"
+    ],
+    "trace_ids_despues": [
+      "81de53af5521f9d41861ac9e0688d33b",
+      "e4bcca872fc4d354387868111d865618"
+    ],
+    "conservadas": true
+  },
+  "modelo_real": {
+    "ejecutada": false,
+    "motivo": "Sin LLM_API_KEY, LLM_MODEL ni LLM_CUOTA_HMAC_KEY en el entorno",
+    "tope_usd": 0.5
+  }
+}

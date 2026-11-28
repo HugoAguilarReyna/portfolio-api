@@ -1,0 +1,29 @@
+# Phoenix autoalojado para diagnóstico privado del agente DIC.
+#
+#   docker compose -f compose.phoenix.yml --profile phoenix up -d
+#   open http://localhost:6006
+#
+# Solo publica en localhost. La base SQLite vive en el volumen `phoenix_data`,
+# así que reiniciar el contenedor no borra las trazas. No requiere cuenta de
+# Arize ni clave de LangSmith.
+name: portfolio-phoenix
+
+services:
+  phoenix:
+    image: arizephoenix/phoenix:22.1.0
+    profiles: ["phoenix"]
+    ports:
+      - "127.0.0.1:6006:6006" # UI y colector OTLP HTTP
+      - "127.0.0.1:4317:4317" # colector OTLP gRPC
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+      # La imagen escucha en :: y, desde Phoenix 21, eso activa auth por defecto.
+      # El panel solo se publica en loopback; auth local explícita desactivada.
+      PHOENIX_ENABLE_AUTH: "false"
+      PHOENIX_HOST: 0.0.0.0
+    volumes:
+      - phoenix_data:/mnt/data
+
+volumes:
+  phoenix_data:
+    driver: local

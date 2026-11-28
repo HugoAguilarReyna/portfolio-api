@@ -21,7 +21,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.config import Settings
-from app.llm import contexto, limites
+from app.llm import contexto, limites, presupuesto
 
 #: Tope duro de caracteres que se envían como contexto al modelo.
 MAXIMO_CONTEXTO = 6_000
@@ -112,20 +112,15 @@ def post_chat(
     *,
     timeout: float | None = None,
 ) -> dict[str, Any]:
-    """POST a `/chat/completions` con reserva de cuota previa.
+    """POST a `/chat/completions` con reserva de cuota y de dinero previas.
 
-    Es el único transporte de las seis demos, así que aquí se aplican las cuotas
-    compartidas (IP anónima + cupo global) y el tope de salida. Si la reserva no
-    se puede hacer, no se llama al proveedor: falla cerrado.
+    Es el único transporte de las demos y del evaluador, así que aquí se aplican
+    las cuotas compartidas (IP anónima + cupo global), el tope de salida y, si la
+    corrida activó un presupuesto monetario, la reserva en USD de cada solicitud.
+    Si una reserva no se puede hacer, no se llama al proveedor: falla cerrado.
     """
-    # Reserva atómica del cupo antes de gastar: si no hay cupo, no hay llamada.
-    # Dentro de un run del agente el cupo ya se reservó una sola vez al empezar,
-    # así que los pasos del bucle no consumen cupo adicional ni chocan con el
-    # intervalo mínimo. Fuera de un run, cada llamada reserva por sí misma.
-    if not contexto.reserva_activa():
-        limites.reservar_llamada(settings, ip=contexto.ip_actual())
-
-    # Ningún llamador puede superar el tope configurado de salida.
+    # Ningún llamador puede superar el tope configurado de salida. Se normaliza
+    # antes de reservar para que la cota use exactamente el payload que se envía.
     tope = int(settings.llm_max_tokens)
     payload = dict(payload)
     try:
@@ -134,9 +129,28 @@ def post_chat(
         pedido = tope
     payload["max_tokens"] = min(pedido, tope)
 
+    # Reserva monetaria antes de cualquier efecto de red. Incluye mensajes,
+    # esquemas de herramientas y el máximo de salida; cada reintento del agente
+    # vuelve a pasar por aquí y reserva de nuevo.
+    gestor = presupuesto.activo()
+    reserva = gestor.reservar(payload) if gestor is not None else None
+
+    # Reserva atómica del cupo antes de gastar: si no hay cupo, no hay llamada.
+    # Dentro de un run del agente el cupo ya se reservó una sola vez al empezar,
+    # así que los pasos del bucle no consumen cupo adicional ni chocan con el
+    # intervalo mínimo. Fuera de un run, cada llamada reserva por sí misma.
+    try:
+        if not contexto.reserva_activa():
+            limites.reservar_llamada(settings, ip=contexto.ip_actual())
+    except BaseException:
+        # La cuota falló antes de construir la petición: no hubo cobro posible.
+        if gestor is not None and reserva is not None:
+            gestor.cancelar(reserva)
+        raise
+
     peticion = Request(
         _endpoint(settings),
-        data=json.dumps(payload).encode("utf-8"),
+        data=presupuesto.serializar(payload),
         headers={
             "Authorization": f"Bearer {settings.llm_api_key}",
             "Content-Type": "application/json",
@@ -148,11 +162,20 @@ def post_chat(
         with urlopen(peticion, timeout=plazo) as respuesta:
             sobre = json.loads(respuesta.read())
     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
+        # Fallo ambiguo: el proveedor pudo procesar y cobrar la solicitud antes
+        # de agotar el tiempo de espera. La reserva se conserva.
+        if gestor is not None and reserva is not None:
+            gestor.fallar(reserva)
         raise LlmUpstreamError(
             "La consulta al proveedor no respondió o devolvió datos ilegibles."
         ) from exc
     if not isinstance(sobre, dict):
+        if gestor is not None and reserva is not None:
+            gestor.fallar(reserva)
         raise LlmUpstreamError("La respuesta del proveedor no es un objeto JSON.")
+    if gestor is not None and reserva is not None:
+        # Con `usage` se libera lo no consumido; sin `usage` se conserva la cota.
+        gestor.conciliar(reserva, sobre)
     return sobre
 
 

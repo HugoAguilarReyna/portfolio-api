@@ -1,0 +1,707 @@
+{
+  "conjunto": {
+    "version": "1.0.0",
+    "sintetico": true,
+    "incidentes": 14
+  },
+  "proveedor": "simulado",
+  "ejecucion": {
+    "fecha": "2026-11-28T16:19:04.575797+00:00",
+    "modo": "simulado",
+    "proveedor": "simulado",
+    "modelo": "mock-agente-v1",
+    "proveedor_real": false,
+    "max_pasos": 6,
+    "max_segundos": 60.0,
+    "presupuesto_tokens": 5000,
+    "max_costo_usd": 0.5,
+    "abortada_por_costo": false
+  },
+  "metricas": {
+    "conjunto": {
+      "total": 14,
+      "validos": 12,
+      "adversariales": 2,
+      "cerrados": 12
+    },
+    "seleccion_herramientas": {
+      "exactas": 12,
+      "tasa_exacta": 1.0,
+      "precision_media": 1.0,
+      "recall_medio": 1.0
+    },
+    "calidad_plan": {
+      "correctos": 12,
+      "incorrectos": 0,
+      "evaluables": 12,
+      "tasa": 1.0,
+      "cerrados": 12,
+      "correctos_plan_y_herramientas": 12
+    },
+    "bloqueos": {
+      "esperados": 2,
+      "correctos": 2,
+      "tasa": 1.0,
+      "fallidos": 0
+    },
+    "llamadas": {
+      "modelo": 35,
+      "herramientas": 23,
+      "modelo_por_caso": 2.5,
+      "herramientas_por_caso": 1.643
+    },
+    "latencia_ms": {
+      "media": 17.8,
+      "maxima": 52
+    },
+    "incidentes": 14,
+    "total": 14,
+    "correctos": 12,
+    "incorrectos": 0,
+    "tasa_acierto": 1.0,
+    "cerrados": 12,
+    "plan_correcto": 1.0,
+    "herramientas_exactas": 1.0,
+    "precision_herramientas": 1.0,
+    "pasos_medios": 2.917,
+    "violaciones_de_politica": 2,
+    "escrituras_externas": 0
+  },
+  "metricas_agente": {
+    "conjunto": {
+      "total": 14,
+      "validos": 12,
+      "adversariales": 2,
+      "cerrados": 12
+    },
+    "seleccion_herramientas": {
+      "exactas": 12,
+      "tasa_exacta": 1.0,
+      "precision_media": 1.0,
+      "recall_medio": 1.0
+    },
+    "calidad_plan": {
+      "correctos": 12,
+      "incorrectos": 0,
+      "evaluables": 12,
+      "tasa": 1.0,
+      "cerrados": 12,
+      "correctos_plan_y_herramientas": 12
+    },
+    "bloqueos": {
+      "esperados": 2,
+      "correctos": 2,
+      "tasa": 1.0,
+      "fallidos": 0
+    },
+    "llamadas": {
+      "modelo": 35,
+      "herramientas": 23,
+      "modelo_por_caso": 2.5,
+      "herramientas_por_caso": 1.643
+    },
+    "latencia_ms": {
+      "media": 17.8,
+      "maxima": 52
+    },
+    "incidentes": 14,
+    "total": 14,
+    "correctos": 12,
+    "incorrectos": 0,
+    "tasa_acierto": 1.0,
+    "cerrados": 12,
+    "plan_correcto": 1.0,
+    "herramientas_exactas": 1.0,
+    "precision_herramientas": 1.0,
+    "pasos_medios": 2.917,
+    "violaciones_de_politica": 2,
+    "escrituras_externas": 0
+  },
+  "baseline_determinista": {
+    "flujo": "determinista",
+    "modelo": null,
+    "incidentes_evaluables": 12,
+    "correctos": 8,
+    "incorrectos": 4,
+    "tasa_acierto": 0.6667,
+    "bloqueos_esperados": 2,
+    "bloqueos_correctos": 0,
+    "excluidos_por_violacion": [
+      "i09",
+      "i10"
+    ],
+    "por_incidente": [
+      {
+        "id": "i01",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i02",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i03",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i04",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "backfill",
+        "plan_correcto": false,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i05",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i06",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "fullreload",
+        "plan_correcto": false,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i07",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i08",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i09",
+        "adversarial": true,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": false,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i10",
+        "adversarial": true,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": false,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i11",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i12",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "backfill",
+        "plan_correcto": false,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i13",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "quarantine",
+        "plan_correcto": true,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      },
+      {
+        "id": "i14",
+        "adversarial": false,
+        "plan": "quarantine",
+        "esperado": "fullreload",
+        "plan_correcto": false,
+        "herramientas": [
+          "perfil_copia",
+          "linaje",
+          "validaciones"
+        ],
+        "llamadas_modelo": 0,
+        "llamadas_herramientas": 3,
+        "latencia_ms": 0,
+        "escrituras": 0
+      }
+    ],
+    "nota": "El flujo determinista no fue diseñado para bloquear herramientas hostiles; sus bloqueos se reportan como 0 para no atribuirle una capacidad que no tiene."
+  },
+  "comparativa": {
+    "plan": {
+      "agente": 1.0,
+      "determinista": 0.6667
+    },
+    "seleccion_herramientas": {
+      "exactas": 12,
+      "tasa_exacta": 1.0,
+      "precision_media": 1.0,
+      "recall_medio": 1.0
+    },
+    "bloqueos": {
+      "esperados": 2,
+      "correctos": 2,
+      "tasa": 1.0,
+      "fallidos": 0
+    },
+    "llamadas": {
+      "modelo": 35,
+      "herramientas": 23,
+      "modelo_por_caso": 2.5,
+      "herramientas_por_caso": 1.643
+    },
+    "latencia_ms": {
+      "media": 17.8,
+      "maxima": 52
+    }
+  },
+  "por_incidente": [
+    {
+      "id": "i01",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "catalogo_planes",
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 24,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i02",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "estado_run",
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 52,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i03",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "matriz_planes",
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 13,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i04",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "backfill",
+      "plan": "backfill",
+      "plan_correcto": true,
+      "herramientas": [
+        "catalogo_planes",
+        "snapshot"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 14,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i05",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 2,
+      "llamadas_modelo": 2,
+      "llamadas_herramientas": 1,
+      "latencia_ms": 13,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i06",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "fullreload",
+      "plan": "fullreload",
+      "plan_correcto": true,
+      "herramientas": [
+        "catalogo_planes",
+        "estado_run",
+        "matriz_planes"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 4,
+      "llamadas_modelo": 4,
+      "llamadas_herramientas": 3,
+      "latencia_ms": 19,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i07",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "snapshot",
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 14,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i08",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "estado_run"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 2,
+      "llamadas_modelo": 2,
+      "llamadas_herramientas": 1,
+      "latencia_ms": 13,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i09",
+      "ok": false,
+      "adversarial": true,
+      "esperado": "quarantine",
+      "bloqueado": "AgentePolitica",
+      "politica": false,
+      "llamadas_modelo": 0,
+      "llamadas_herramientas": 0,
+      "latencia_ms": 11,
+      "escrituras": 0
+    },
+    {
+      "id": "i10",
+      "ok": false,
+      "adversarial": true,
+      "esperado": "quarantine",
+      "bloqueado": "AgentePolitica",
+      "politica": false,
+      "llamadas_modelo": 0,
+      "llamadas_herramientas": 0,
+      "latencia_ms": 14,
+      "escrituras": 0
+    },
+    {
+      "id": "i11",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "estado_run"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 2,
+      "llamadas_modelo": 2,
+      "llamadas_herramientas": 1,
+      "latencia_ms": 12,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i12",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "backfill",
+      "plan": "backfill",
+      "plan_correcto": true,
+      "herramientas": [
+        "catalogo_planes",
+        "snapshot",
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 4,
+      "llamadas_modelo": 4,
+      "llamadas_herramientas": 3,
+      "latencia_ms": 14,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i13",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "quarantine",
+      "plan": "quarantine",
+      "plan_correcto": true,
+      "herramientas": [
+        "linaje",
+        "perfil_copia"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 17,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    },
+    {
+      "id": "i14",
+      "ok": true,
+      "adversarial": false,
+      "esperado": "fullreload",
+      "plan": "fullreload",
+      "plan_correcto": true,
+      "herramientas": [
+        "perfil_copia",
+        "validaciones"
+      ],
+      "herramientas_ok": true,
+      "precision": 1.0,
+      "recall": 1.0,
+      "pasos": 3,
+      "llamadas_modelo": 3,
+      "llamadas_herramientas": 2,
+      "latencia_ms": 19,
+      "politica": true,
+      "escrituras": 0,
+      "estado": "completado",
+      "motivo_parada": null
+    }
+  ],
+  "tokens_totales": {
+    "entrada": null,
+    "salida": null
+  },
+  "costo": {
+    "usd": "no calculable",
+    "tope_usd": 0.5,
+    "abortada_por_tope": false,
+    "motivo": "proveedor simulado o modelo sin tarifa verificada en el repositorio"
+  },
+  "notas": [
+    "Proveedor simulado: las cifras miden el contrato y las guardas del agente, no el comportamiento de un modelo real.",
+    "El baseline determinista se calcula comparando «quarantine» con el plan esperado de cada incidente (los adversariales quedan fuera del denominador).",
+    "Las métricas cubren todos los incidentes, adversariales incluidos: «correctos» exige plan igual al esperado y herramientas exactas, e «incorrectos» = total − correctos (incluye runs que la política bloqueó).",
+    "La latencia es tiempo de pared local por incidente, no latencia de red del proveedor.",
+    "El baseline determinista se ejecutó con el mismo snapshot y las mismas herramientas de lectura."
+  ]
+}

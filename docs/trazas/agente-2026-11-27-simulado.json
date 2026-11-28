@@ -1,0 +1,662 @@
+{
+  "fecha": "2026-11-27",
+  "conjunto": "trazas sintéticas para revisión",
+  "proveedor": "simulado",
+  "modelo": "mock-traza-v1",
+  "nota": "El modelo está guionizado para producir rutas distintas. No es una corrida real ni mide calidad de un LLM; mide el contrato del grafo, la elección observable y las guardas.",
+  "casos": [
+    {
+      "caso": "missing-ruta-perfil-linaje",
+      "run_id": "DI-14C399EFDC",
+      "escenario": "missing",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "completado",
+      "motivo_parada": null,
+      "herramientas_usadas": [
+        "perfil_copia",
+        "linaje"
+      ],
+      "traza": [
+        {
+          "paso": 1,
+          "tipo": "herramienta",
+          "herramienta": "perfil_copia",
+          "evidencia_id": "perfil_copia"
+        },
+        {
+          "paso": 2,
+          "tipo": "herramienta",
+          "herramienta": "linaje",
+          "evidencia_id": "linaje"
+        },
+        {
+          "paso": 3,
+          "tipo": "final",
+          "plan": "quarantine"
+        }
+      ],
+      "eventos": [
+        {
+          "seq": 1,
+          "tipo": "entrada",
+          "actor": "sistema",
+          "resumen": "Incidente missing recibido; autoridad de escritura: ninguna.",
+          "duracion_ms": 141,
+          "paso": 0
+        },
+        {
+          "seq": 2,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 141,
+          "paso": 1,
+          "tokens": 120
+        },
+        {
+          "seq": 3,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: perfil_copia.",
+          "duracion_ms": 141,
+          "paso": 1,
+          "herramienta": "perfil_copia"
+        },
+        {
+          "seq": 4,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "20 filas; 0 llaves duplicadas; 1 periodos PIB faltantes; 3 códigos de indicador.",
+          "duracion_ms": 141,
+          "paso": 1,
+          "herramienta": "perfil_copia",
+          "evidencia_id": "perfil_copia",
+          "solo_lectura": true
+        },
+        {
+          "seq": 5,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 141,
+          "paso": 1,
+          "herramienta": "perfil_copia",
+          "evidencia_id": "perfil_copia"
+        },
+        {
+          "seq": 6,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 141,
+          "paso": 2,
+          "tokens": 120
+        },
+        {
+          "seq": 7,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: linaje.",
+          "duracion_ms": 141,
+          "paso": 2,
+          "herramienta": "linaje"
+        },
+        {
+          "seq": 8,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "3 activos declarados aguas abajo de NY.GDP.MKTP.KD.ZG (fixture de linaje).",
+          "duracion_ms": 141,
+          "paso": 2,
+          "herramienta": "linaje",
+          "evidencia_id": "linaje",
+          "solo_lectura": true
+        },
+        {
+          "seq": 9,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 141,
+          "paso": 2,
+          "herramienta": "linaje",
+          "evidencia_id": "linaje"
+        },
+        {
+          "seq": 10,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo cerró la investigación con una recomendación.",
+          "duracion_ms": 156,
+          "paso": 3
+        },
+        {
+          "seq": 11,
+          "tipo": "validacion",
+          "actor": "servidor",
+          "resumen": "Esquema, política y vínculo de evidencia validados en el servidor.",
+          "duracion_ms": 156,
+          "paso": 3,
+          "estado_validacion": "aprobada"
+        },
+        {
+          "seq": 12,
+          "tipo": "recomendacion",
+          "actor": "modelo",
+          "resumen": "Recomendación consultiva: quarantine.",
+          "duracion_ms": 156,
+          "paso": 3,
+          "plan": "quarantine"
+        },
+        {
+          "seq": 13,
+          "tipo": "revision_humana",
+          "actor": "humano",
+          "resumen": "Recomendación pendiente de revisión humana; no se ejecutó nada.",
+          "duracion_ms": 156,
+          "paso": 3,
+          "estado_revision": "pendiente"
+        }
+      ],
+      "recomendacion": {
+        "plan": "quarantine",
+        "name": "Cuarentena + recarga de fuente",
+        "allowed": true,
+        "forward_blocked": true
+      },
+      "justificacion": "La evidencia consultada sostiene la recomendación.",
+      "evidencia": [
+        "perfil_copia: falta el periodo PIB 2025.",
+        "linaje: activos aguas abajo identificados."
+      ],
+      "tokens_consumidos": 360,
+      "presupuesto_tokens": 23000,
+      "external_writes": 0,
+      "explica": "El perfil revela el faltante y el modelo consulta linaje antes de recomendar cuarentena."
+    },
+    {
+      "caso": "schema-ruta-perfil-validaciones",
+      "run_id": "DI-C6059DB25A",
+      "escenario": "schema",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "completado",
+      "motivo_parada": null,
+      "herramientas_usadas": [
+        "perfil_copia",
+        "validaciones"
+      ],
+      "traza": [
+        {
+          "paso": 1,
+          "tipo": "herramienta",
+          "herramienta": "perfil_copia",
+          "evidencia_id": "perfil_copia"
+        },
+        {
+          "paso": 2,
+          "tipo": "herramienta",
+          "herramienta": "validaciones",
+          "evidencia_id": "validaciones"
+        },
+        {
+          "paso": 3,
+          "tipo": "final",
+          "plan": "fullreload"
+        }
+      ],
+      "eventos": [
+        {
+          "seq": 1,
+          "tipo": "entrada",
+          "actor": "sistema",
+          "resumen": "Incidente schema recibido; autoridad de escritura: ninguna.",
+          "duracion_ms": 47,
+          "paso": 0
+        },
+        {
+          "seq": 2,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "tokens": 120
+        },
+        {
+          "seq": 3,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: perfil_copia.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "perfil_copia"
+        },
+        {
+          "seq": 4,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "21 filas; 0 llaves duplicadas; 1 periodos PIB faltantes; 4 códigos de indicador.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "perfil_copia",
+          "evidencia_id": "perfil_copia",
+          "solo_lectura": true
+        },
+        {
+          "seq": 5,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "perfil_copia",
+          "evidencia_id": "perfil_copia"
+        },
+        {
+          "seq": 6,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 47,
+          "paso": 2,
+          "tokens": 120
+        },
+        {
+          "seq": 7,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: validaciones.",
+          "duracion_ms": 47,
+          "paso": 2,
+          "herramienta": "validaciones"
+        },
+        {
+          "seq": 8,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "4 validaciones fallidas de 12; 8 aprobadas.",
+          "duracion_ms": 47,
+          "paso": 2,
+          "herramienta": "validaciones",
+          "evidencia_id": "validaciones",
+          "solo_lectura": true
+        },
+        {
+          "seq": 9,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 47,
+          "paso": 2,
+          "herramienta": "validaciones",
+          "evidencia_id": "validaciones"
+        },
+        {
+          "seq": 10,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo cerró la investigación con una recomendación.",
+          "duracion_ms": 47,
+          "paso": 3
+        },
+        {
+          "seq": 11,
+          "tipo": "validacion",
+          "actor": "servidor",
+          "resumen": "Esquema, política y vínculo de evidencia validados en el servidor.",
+          "duracion_ms": 47,
+          "paso": 3,
+          "estado_validacion": "aprobada"
+        },
+        {
+          "seq": 12,
+          "tipo": "recomendacion",
+          "actor": "modelo",
+          "resumen": "Recomendación consultiva: fullreload.",
+          "duracion_ms": 47,
+          "paso": 3,
+          "plan": "fullreload"
+        },
+        {
+          "seq": 13,
+          "tipo": "revision_humana",
+          "actor": "humano",
+          "resumen": "Recomendación pendiente de revisión humana; no se ejecutó nada.",
+          "duracion_ms": 62,
+          "paso": 3,
+          "estado_revision": "pendiente"
+        }
+      ],
+      "recomendacion": {
+        "plan": "fullreload",
+        "name": "Recarga integral",
+        "allowed": true,
+        "forward_blocked": true
+      },
+      "justificacion": "La evidencia consultada sostiene la recomendación.",
+      "evidencia": [
+        "perfil_copia: indicator_code no conserva el tipo esperado.",
+        "validaciones: el contrato falla."
+      ],
+      "tokens_consumidos": 360,
+      "presupuesto_tokens": 23000,
+      "external_writes": 0,
+      "explica": "El tipo alterado del perfil cambia la siguiente consulta a validaciones; no reutiliza la ruta de missing."
+    },
+    {
+      "caso": "evidencia-insuficiente",
+      "run_id": "DI-8ABF60918A",
+      "escenario": "missing",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "detenido",
+      "motivo_parada": "evidencia_insuficiente",
+      "herramientas_usadas": [],
+      "traza": [],
+      "eventos": [
+        {
+          "seq": 1,
+          "tipo": "entrada",
+          "actor": "sistema",
+          "resumen": "Incidente missing recibido; autoridad de escritura: ninguna.",
+          "duracion_ms": 47,
+          "paso": 0
+        },
+        {
+          "seq": 2,
+          "tipo": "parada",
+          "actor": "servidor",
+          "resumen": "El modelo no consultó herramientas; no hay evidencia verificable.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "motivo": "evidencia_insuficiente"
+        }
+      ],
+      "recomendacion": null,
+      "justificacion": "",
+      "evidencia": [],
+      "tokens_consumidos": 120,
+      "presupuesto_tokens": 23000,
+      "external_writes": 0,
+      "explica": "El modelo intenta cerrar sin herramientas; el servidor detiene la corrida."
+    },
+    {
+      "caso": "bloqueo-herramienta-prohibida",
+      "run_id": "DI-0D3042BFD8",
+      "escenario": "missing",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "detenido",
+      "error": "AgentePolitica",
+      "mensaje": "El modelo pidió una herramienta no permitida: escribir_tabla",
+      "traza": [
+        {
+          "paso": 1,
+          "tipo": "rechazo",
+          "herramienta": "escribir_tabla",
+          "motivo": "fuera_de_catalogo"
+        }
+      ],
+      "eventos": [
+        {
+          "seq": 1,
+          "tipo": "entrada",
+          "actor": "sistema",
+          "resumen": "Incidente missing recibido; autoridad de escritura: ninguna.",
+          "duracion_ms": 47,
+          "paso": 0
+        },
+        {
+          "seq": 2,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "tokens": 120
+        },
+        {
+          "seq": 3,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: escribir_tabla.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "escribir_tabla"
+        },
+        {
+          "seq": 4,
+          "tipo": "rechazo",
+          "actor": "servidor",
+          "resumen": "Herramienta fuera del catálogo: escribir_tabla.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "escribir_tabla",
+          "motivo": "fuera_de_catalogo"
+        }
+      ],
+      "recomendacion": null,
+      "explica": "El catálogo cerrado rechaza una acción de escritura antes de ejecutarla."
+    },
+    {
+      "caso": "limite-presupuesto",
+      "run_id": "DI-94150C2A0F",
+      "escenario": "duplicate",
+      "modo": "simulado",
+      "modelo": "mock-traza-v1",
+      "estado": "detenido",
+      "error": "AgentePresupuesto",
+      "mensaje": "El agente alcanzó su presupuesto de tokens; se detuvo sin otra llamada.",
+      "traza": [
+        {
+          "paso": 1,
+          "tipo": "herramienta",
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "paso": 2,
+          "tipo": "herramienta",
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "paso": 3,
+          "tipo": "herramienta",
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "paso": 4,
+          "tipo": "herramienta",
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "paso": 5,
+          "tipo": "presupuesto",
+          "motivo": "estimacion"
+        }
+      ],
+      "eventos": [
+        {
+          "seq": 1,
+          "tipo": "entrada",
+          "actor": "sistema",
+          "resumen": "Incidente duplicate recibido; autoridad de escritura: ninguna.",
+          "duracion_ms": 47,
+          "paso": 0
+        },
+        {
+          "seq": 2,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "tokens": 120
+        },
+        {
+          "seq": 3,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: estado_run.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "estado_run"
+        },
+        {
+          "seq": 4,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "Run DI-94150C2A0F en estado awaiting_human.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run",
+          "solo_lectura": true
+        },
+        {
+          "seq": 5,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 47,
+          "paso": 1,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "seq": 6,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 61,
+          "paso": 2,
+          "tokens": 120
+        },
+        {
+          "seq": 7,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: estado_run.",
+          "duracion_ms": 61,
+          "paso": 2,
+          "herramienta": "estado_run"
+        },
+        {
+          "seq": 8,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "Run DI-94150C2A0F en estado awaiting_human.",
+          "duracion_ms": 61,
+          "paso": 2,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run",
+          "solo_lectura": true
+        },
+        {
+          "seq": 9,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 61,
+          "paso": 2,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "seq": 10,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 61,
+          "paso": 3,
+          "tokens": 120
+        },
+        {
+          "seq": 11,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: estado_run.",
+          "duracion_ms": 61,
+          "paso": 3,
+          "herramienta": "estado_run"
+        },
+        {
+          "seq": 12,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "Run DI-94150C2A0F en estado awaiting_human.",
+          "duracion_ms": 61,
+          "paso": 3,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run",
+          "solo_lectura": true
+        },
+        {
+          "seq": 13,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 61,
+          "paso": 3,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "seq": 14,
+          "tipo": "modelo",
+          "actor": "modelo",
+          "resumen": "El modelo recibió la evidencia acumulada y eligió continuar.",
+          "duracion_ms": 61,
+          "paso": 4,
+          "tokens": 120
+        },
+        {
+          "seq": 15,
+          "tipo": "seleccion",
+          "actor": "modelo",
+          "resumen": "Herramienta elegida: estado_run.",
+          "duracion_ms": 61,
+          "paso": 4,
+          "herramienta": "estado_run"
+        },
+        {
+          "seq": 16,
+          "tipo": "herramienta",
+          "actor": "herramienta",
+          "resumen": "Run DI-94150C2A0F en estado awaiting_human.",
+          "duracion_ms": 61,
+          "paso": 4,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run",
+          "solo_lectura": true
+        },
+        {
+          "seq": 17,
+          "tipo": "resultado",
+          "actor": "herramienta",
+          "resumen": "Resultado devuelto al modelo y agregado a la evidencia.",
+          "duracion_ms": 61,
+          "paso": 4,
+          "herramienta": "estado_run",
+          "evidencia_id": "estado_run"
+        },
+        {
+          "seq": 18,
+          "tipo": "parada",
+          "actor": "servidor",
+          "resumen": "El siguiente paso no cabe en el presupuesto de tokens; no se ejecutó ninguna reparación.",
+          "duracion_ms": 61,
+          "paso": 4,
+          "motivo": "presupuesto"
+        }
+      ],
+      "recomendacion": null,
+      "explica": "El presupuesto detiene la corrida después de la evidencia disponible; no hay reparación."
+    }
+  ]
+}
