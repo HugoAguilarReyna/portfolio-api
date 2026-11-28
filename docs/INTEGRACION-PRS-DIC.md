@@ -7,6 +7,9 @@ Instantánea de revisión: **2026-11-28**. Los PR de esta ronda son:
 | portfolio-api | #4 | `feat/dic-langgraph-agent` | `98ad4f8` | `ccb3b9f` (`main`) |
 | portafolio-hugo-aguilar | #8 | `feat/dic-agent-flow` | `e532ef4` | `a1ae6ac` (`main`) |
 
+Los SHA son la cabeza funcional revisada; la rama puede avanzar con commits de
+documentación posteriores.
+
 PR de auditoría abiertos que tocan el mismo alcance:
 
 | Repo | PR | Rama | Cabeza revisada | Base |
