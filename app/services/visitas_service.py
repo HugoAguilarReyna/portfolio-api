@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pymongo import ReturnDocument
+from pymongo.errors import PyMongoError
 
 from app.config import Settings
 from app.db.mongo import METRICAS_VISITAS
@@ -141,10 +142,19 @@ class ServicioVisitas:
         ``find_one_and_update`` + ``$inc`` y devuelve los contadores resultantes.
         """
         if es_bot(user_agent):
-            estado = self.estado()
+            # Un bot no deja huella ni necesita la base para responder. Si el
+            # almacén no está disponible, la petición del bot sigue siendo un
+            # no-op exitoso en lugar de convertirse en un 503 de telemetría.
+            try:
+                estado = self.estado()
+                visitas = int(estado["visitas_totales"])
+                unicos = int(estado["visitantes_unicos"])
+            except PyMongoError:
+                visitas = 0
+                unicos = 0
             return {
-                "visitas_totales": estado["visitas_totales"],
-                "visitantes_unicos": estado["visitantes_unicos"],
+                "visitas_totales": visitas,
+                "visitantes_unicos": unicos,
                 "contabilizada": False,
             }
 
