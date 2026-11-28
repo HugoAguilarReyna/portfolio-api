@@ -186,7 +186,7 @@ node tools/verificar-agent-flow.mjs
 ```
 
 En la ejecución local: **521 passed, 11 skipped** en la suite completa; **39
-pruebas específicas** del agente/evaluación/MCP y **25 comprobaciones** del flujo de
+pruebas específicas** del agente/evaluación/MCP y **27 comprobaciones** del flujo de
 navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
 reales descargados. El entorno de desarrollo requirió un shim local de pyOpenSSL
 por una incompatibilidad de la máquina, no del repositorio; CI instala las
@@ -235,4 +235,5 @@ verificada, pero no una verificación remota ni un despliegue público.
 - La interfaz etiqueta la traza como reproducción; un streaming SSE queda como
   siguiente mejora, no se presenta como hecho.
 - El linaje es una fixture declarada de la demo, no un catálogo corporativo.
+
 
