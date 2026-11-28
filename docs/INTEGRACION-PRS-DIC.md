@@ -96,7 +96,7 @@ del rebase: #3 cambia el conjunto de evaluación y #7 cambia la UI/evidencia.
   `ejecucion.presupuesto_monetario` al JSON del evaluador; el sitio no depende de
   ese campo.
 - **Sitio #8 → API #4:** la UI funciona con la API anterior, pero la corrida real
-  requiere #4 para LangGraph/MCP/LangSmith. Si #4 no está desplegado, el flujo cae
+  requiere #4 para LangGraph/MCP/Phoenix. Si #4 no está desplegado, el flujo cae
   en respaldo determinista o error, y la UI lo etiqueta como tal.
 - **Presupuesto:** el contexto monetario solo se activa en
   `scripts/evaluar_agente_dic.py`; las rutas normales de las demos no cambian de
@@ -116,7 +116,8 @@ del rebase: #3 cambia el conjunto de evaluación y #7 cambia la UI/evidencia.
 
 - Corrida real del evaluador: **pendiente**; no hay `LLM_API_KEY`, `LLM_MODEL` ni
   `LLM_CUOTA_HMAC_KEY` en este entorno.
-- Traza remota LangSmith: **pendiente**; no hay `LANGSMITH_API_KEY`.
+- Traza Phoenix: **verificada en local** con dos corridas sintéticas y
+  persistencia tras reiniciar el contenedor; el panel no se publica.
 - La verificación de presupuesto se hizo con proveedor doblado (sin red): saldo
   agotado antes de la llamada, tarifa desconocida con cero solicitudes, fallo
   ambiguo que conserva la reserva y conciliación con `usage`.

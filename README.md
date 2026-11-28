@@ -71,7 +71,7 @@ conciliación de cada migración, en los documentos de cada tablero.
 | PyMongo | 4.15.4 | Acceso a MongoDB (síncrono) |
 | openpyxl | 3.1.5 | Lectura de los boletines XLSX de la CNBV |
 | LangGraph / langchain-core | 1.2.4 / 1.4.0 | Grafo del agente supervisor del DIC |
-| LangSmith | 0.8.14 | Trazas opcionales, desactivadas por omisión |
+| OpenTelemetry / Phoenix | 1.45.2 / 22.1.0 | Trazas locales opcionales, apagadas por omisión |
 | MCP | 1.26.0 | Piloto local stdio de búsqueda de Banxico; no expuesto |
 | MongoDB | MongoDB Atlas, plan M0 (512 MB, compartido) | Base de datos documental |
 | pytest + httpx | 8.4.2 / 0.28.1 | Pruebas |
@@ -407,7 +407,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Estado verificado en el repositorio: **530 pruebas pasan y 11 se omiten**. Las
+Estado verificado en el repositorio: **531 pruebas pasan y 11 se omiten**. Las
 omisiones no son fallos ocultos: requieren los boletines reales de la CNBV en
 `data/cnbv/` (periodos 202410, 202409 y 202310) y lo declaran con ese motivo. Los
 archivos se obtienen con `python -m scripts.importar_cnbv --descargar`; no se
@@ -570,12 +570,49 @@ preparar → modelo ─┬─ herramienta → modelo
 - La respuesta incluye `traza` y `eventos` observables (entrada, modelo, selección,
   herramienta, resultado, validación, recomendación y revisión humana), sin
   prompts, razonamiento interno, credenciales ni filas crudas.
-- `observabilidad.langsmith` informa si la traza externa está activa. Se habilita
-  solo con `LANGSMITH_TRACING=true` y `LANGSMITH_API_KEY`; los metadatos enviados
-  se limitan a run, escenario, flujo y avisos de política. La demo funciona con
-  LangSmith desactivado.
+- `observabilidad.phoenix` informa si la traza OTel local está activa. Se habilita
+  con `PHOENIX_TRACING=true` y un endpoint OTLP; no requiere cuenta de Arize ni
+  clave de LangSmith. Phoenix corre en `localhost` y solo recibe spans sanitizados:
+  run, escenario, modo, orden de herramientas, tiempos, tokens y desenlace.
 - Ante presupuesto, tiempo, pasos o evidencia insuficiente, la corrida se detiene
   y devuelve el motivo y la traza parcial. El flujo determinista sigue disponible.
+
+Phoenix local (opcional, herramienta privada de diagnóstico):
+
+```bash
+docker compose -f compose.phoenix.yml --profile phoenix up -d
+# panel: http://localhost:6006
+PHOENIX_TRACING=true PHOENIX_OTLP_ENDPOINT=http://127.0.0.1:6006/v1/traces \
+  python scripts/generar_trazas_dic.py --salida /tmp/phoenix-dic.json \
+  --caso missing-ruta-perfil-linaje --caso schema-ruta-perfil-validaciones
+docker compose -f compose.phoenix.yml --profile phoenix down
+```
+
+La imagen está fijada (`arizephoenix/phoenix:22.1.0`), la SQLite vive en el
+volumen `phoenix_data` y los puertos se publican solo en `127.0.0.1`. Si Phoenix
+no está disponible, la investigación continúa sin traza externa.
+
+Verificación local del 2026-11-28: dos corridas sintéticas con rutas distintas
+(`perfil_copia→linaje` y `perfil_copia→validaciones`) aparecen en el proyecto
+`portafolio-dic` con **6 spans cada una** (raíz + 3 modelo + 2 herramientas),
+360 tokens reportados y desenlace `completado`; no se encontraron prompts,
+argumentos, respuestas crudas, secretos ni IP. Reiniciar el contenedor conservó
+los mismos `trace_id`. Evidencia: [`docs/evidencia-phoenix.json`](docs/evidencia-phoenix.json)
+y [`docs/evidencia-phoenix-ui.png`](docs/evidencia-phoenix-ui.png).
+
+```text
+trace 81de53af5521f9d41861ac9e0688d33b · run DI-D051C21896 · simulado
+dic.run  tools=perfil_copia,linaje  outcome=completado  tokens=360
+├─ dic.model (paso 1)  tools=perfil_copia  tokens=120
+├─ dic.tool.perfil_copia  evidencia=perfil_copia
+├─ dic.model (paso 2)  tools=linaje  tokens=120
+├─ dic.tool.linaje  evidencia=linaje
+└─ dic.model (paso 3)  final=true  tokens=120
+```
+
+La corrida con un modelo real queda pendiente: no hay credenciales aisladas y no
+se usó ninguna clave del repositorio. Si se ejecuta, conserva el tope de USD 0.50
+y el presupuesto por solicitud ya probado.
 
 Evaluación reproducible con proveedor simulado:
 

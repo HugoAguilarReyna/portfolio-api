@@ -32,9 +32,10 @@ mientras `duplicate` usa `validaciones → catalogo_planes`.
 | `app/incident_commander/agente.py` | fachada `ejecutar()` y línea base `ejecutar_determinista()` |
 | `app/incident_commander/herramientas.py` | 7 herramientas Pydantic de solo lectura y validación |
 | `app/llm/presupuesto.py` | reserva, conciliación y retención monetaria del evaluador |
-| `app/incident_commander/observabilidad.py` | LangSmith opcional y metadatos sanitizados |
+| `app/incident_commander/observabilidad.py` | OpenTelemetry manual hacia Phoenix, apagado por omisión |
+| `compose.phoenix.yml` | Phoenix local fijado, SQLite persistente y puertos en localhost |
 | `app/api/v1/routes/incident_commander.py` | `POST …/agent` y `?flujo=determinista` |
-| `tests/test_agente_langgraph.py` | rutas distintas, evidencia, paradas, LangSmith |
+| `tests/test_agente_langgraph.py` | rutas distintas, evidencia, paradas y spans Phoenix sanitizados |
 | `tests/test_presupuesto_llm.py` | reserva, tarifa desconocida, conciliación y fallo ambiguo |
 | `scripts/evaluar_agente_dic.py` | evaluación comparada y tope de costo |
 | `scripts/generar_trazas_dic.py` | trazas sanitizadas de rutas distintas, abstención y bloqueos |
@@ -116,29 +117,70 @@ El verificador `tools/verificar-agent-flow.mjs` intercepta la API, comprueba que
 no hay llamada automática al cargar, que la traza se reproduce, que el baseline
 se distingue y que no hay desbordes a 390 px.
 
-## 5. LangSmith
+## 5. Arize Phoenix local
 
-La integración está **apagada por omisión**. Solo se activa con:
+La traza externa usa **OpenTelemetry** y un **Phoenix autoalojado**. No requiere
+cuenta de Arize, clave de LangSmith ni salida a Internet: el panel es una
+herramienta privada de diagnóstico en `localhost`.
+
+### Arranque
 
 ```bash
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=...          # secreto del entorno, nunca del repositorio
-LANGSMITH_PROJECT=portafolio-dic
+docker compose -f compose.phoenix.yml --profile phoenix up -d
+# UI:   http://localhost:6006
+# OTLP: http://localhost:6006/v1/traces (HTTP) · 4317 (gRPC)
+docker compose -f compose.phoenix.yml --profile phoenix down
 ```
 
-También se acepta el alias `LANGCHAIN_TRACING_V2` + `LANGCHAIN_API_KEY`. El grafo
-recibe únicamente `run_name`, tags y metadatos agregados (run, escenario, flujo,
-`advisory_only`, `external_writes`). Además, cada llamada crea un span hijo:
-`modelo-dic` (paso, herramientas elegidas, tokens, final) y `herramienta-dic`
-(nombre, duración, resumen y `evidencia_id`). Así la ruta, las herramientas, sus
-tiempos y el resultado son inspeccionables sin enviar mensajes internos.
+La imagen está fijada en `arizephoenix/phoenix:22.1.0`. El volumen
+`phoenix_data` guarda la base SQLite (`PHOENIX_WORKING_DIR=/mnt/data`); reiniciar
+o recrear el contenedor no borra las trazas. Los puertos se publican solo en
+`127.0.0.1`.
 
-El estado que traza LangGraph contiene el contexto sanitizado del incidente y
-resúmenes acotados de herramientas; no incluye filas crudas, credenciales, la IP
-del visitante ni la respuesta completa del proveedor. No se usa el contenido como
-texto libre de traza. Para un entorno especialmente restrictivo se pueden activar
-`LANGSMITH_HIDE_INPUTS=true` y `LANGSMITH_HIDE_OUTPUTS=true`. La respuesta expone
-`observabilidad.langsmith: "activado" | "desactivado"` sin valores secretos.
+### Activación y apagado
+
+La exportación está **apagada por omisión**. Para emitir trazas:
+
+```bash
+PHOENIX_TRACING=true
+PHOENIX_OTLP_ENDPOINT=http://127.0.0.1:6006/v1/traces
+PHOENIX_PROJECT_NAME=portafolio-dic
+```
+
+Si `PHOENIX_TRACING` no está activo, el SDK no se inicializa. Si el SDK falta, el
+endpoint no es HTTP(S) o Phoenix no responde, la investigación continúa: los
+errores de exportación se absorben y el resultado del agente no cambia. La
+respuesta expone `observabilidad.phoenix: "activado" | "desactivado"` sin secretos.
+
+### Instrumentación manual y sanitizada
+
+No se usa auto-instrumentación de HTTP, OpenAI, LangChain ni LangSmith. El grafo
+crea explícitamente:
+
+- `dic.run`: span raíz por corrida con `run_id`, escenario, modo
+  (`real`/`simulado`), orden de herramientas, llamadas, tokens, plan, desenlace y
+  `external_writes=0`;
+- `dic.model`: una por vuelta, con paso, modelo, herramientas elegidas, tokens
+  reportados y si fue la respuesta final;
+- `dic.tool.<herramienta>`: una por ejecución, con nombre, paso, duración,
+  resumen acotado y `evidencia_id`.
+
+No se envían prompts, mensajes, argumentos de herramientas, respuestas crudas,
+filas del dataset, credenciales ni la IP del visitante. Los campos son los mismos
+eventos sanitizados que ya consume la pestaña «Flujo del agente», no el contenido
+interno del proveedor.
+
+La verificación local con dos rutas sintéticas (`perfil_copia→linaje` y
+`perfil_copia→validaciones`) se ejecutó el 2026-11-28: cada una produjo 6 spans
+(raíz, 3 modelo y 2 herramientas), 360 tokens reportados y `completado`; los
+mismos `trace_id` siguieron presentes tras reiniciar el contenedor. No se
+encontraron prompts, argumentos, respuestas crudas, secretos ni IP en los
+atributos exportados. Evidencia: `docs/evidencia-phoenix.json`, captura
+`docs/evidencia-phoenix-ui.png` y `docs/trazas/phoenix-2026-11-28-simulado.json`.
+
+La corrida con un modelo real queda pendiente porque no hay credenciales
+aisladas; si se ejecuta, conserva el tope de USD 0.50 y el presupuesto por
+solicitud ya probado.
 
 ## 6. Evaluación
 
@@ -205,6 +247,13 @@ python -m pytest tests/test_agente_dic.py tests/test_agente_langgraph.py \
 # trazas sanitizadas comparativas
 python scripts/generar_trazas_dic.py
 
+# Phoenix local + dos rutas sintéticas con spans OTel
+docker compose -f compose.phoenix.yml --profile phoenix up -d
+PHOENIX_TRACING=true PHOENIX_OTLP_ENDPOINT=http://127.0.0.1:6006/v1/traces \
+  python scripts/generar_trazas_dic.py --salida /tmp/phoenix-dic.json \
+  --caso missing-ruta-perfil-linaje --caso schema-ruta-perfil-validaciones
+# abrir http://localhost:6006 y comprobar los spans de cada run
+
 # MCP local: descubrimiento e invocación con el cliente separado
 python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
 
@@ -212,8 +261,8 @@ python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
 node tools/verificar-agent-flow.mjs
 ```
 
-En la ejecución local: **530 passed, 11 skipped** en la suite completa; **48
-pruebas específicas** del agente/evaluación/presupuesto/MCP y **31 comprobaciones**
+En la ejecución local: **531 passed, 11 skipped** en la suite completa; **49
+pruebas específicas** del agente/evaluación/presupuesto/MCP y **32 comprobaciones**
 del flujo de navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
 reales descargados. El entorno de desarrollo requirió un shim local de pyOpenSSL
 por una incompatibilidad de la máquina, no del repositorio; CI instala las
@@ -246,12 +295,12 @@ expone fuera de local. Contrato completo: [`MCP-ANALISTA.md`](MCP-ANALISTA.md).
 | **LangGraph** | `app/incident_commander/grafo.py` | `pytest tests/test_agente_langgraph.py`; corridas con guion y `scripts/generar_trazas_dic.py` | Grafo con nodos modelo/herramienta/validación; dos rutas distintas (`perfil→linaje` y `perfil→validaciones`); abstención, bloqueo y parada por presupuesto | Corrida con modelo real; hoy el proveedor es simulado |
 | **LangChain** | `app/incident_commander/herramientas.py` | `convert_to_openai_tool` sobre los siete modelos Pydantic; pruebas del catálogo | Esquemas de herramientas tipados y validados por el servidor | Nada adicional para este alcance |
 | **Presupuesto monetario** | `app/llm/presupuesto.py` + `cliente.post_chat` | `pytest tests/test_presupuesto_llm.py tests/test_eval_agente_dic.py` con transporte doblado | Reserva por POST con entrada, herramientas y salida; conciliación con `usage`; retención ante fallo ambiguo; tarifa desconocida sin solicitudes | Corrida real: faltan credenciales aisladas; no se inventó consumo |
-| **LangSmith** | `app/incident_commander/observabilidad.py` y `grafo.py` | `pytest` del modo apagado y de la configuración saneada; spans `modelo-dic` y `herramienta-dic` | La demo funciona con la traza apagada; con bandera y clave envía ruta, herramientas, tiempos y resúmenes sanitizados | Verificación remota: falta `LANGSMITH_API_KEY`; no se envió ninguna traza real |
+| **Arize Phoenix / OTel** | `app/incident_commander/observabilidad.py`, `grafo.py` y `compose.phoenix.yml` | `pytest tests/test_agente_langgraph.py`; dos corridas sintéticas con rutas distintas y reinicio del contenedor | Traza por corrida con spans `dic.run`, `dic.model` y `dic.tool.*`; atributos sanitizados, sin prompts ni argumentos | La corrida real con modelo queda pendiente de credenciales; las cifras de Phoenix son simuladas |
 | **MCP** | `app/mcp_banxico/server.py` + `scripts/mcp_cliente_banxico.py` | `python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json` | Descubrimiento de `banxico_buscar_fragmentos`, invocación real con `BM-2026-11-05-TASA`, abstención y límite de 3 fragmentos; servidor stdio no público | Analista de producto, autenticación y aislamiento si se expone fuera de local |
 
 La tabla distingue lo ejecutado de lo pendiente. LangGraph y LangChain están
-integrados en el código y probados; LangSmith y MCP tienen integración local
-verificada, pero no una verificación remota ni un despliegue público.
+integrados en el código y probados; Phoenix y MCP están verificados en local,
+pero no se despliegan públicamente.
 
 ## 10. Bloqueos y pendientes
 
@@ -262,8 +311,8 @@ verificada, pero no una verificación remota ni un despliegue público.
   completas; la conciliación contra un `usage` real del proveedor necesita esa
   misma corrida pendiente.
 - Despliegue: fuera de alcance; los cambios se entregan como ramas/PRs revisables.
-- LangSmith: no se ejecutó una traza real contra el servicio porque no hay
-  `LANGSMITH_API_KEY`; la prueba cubre el apagado y la configuración saneada.
+- Phoenix: verificado en local con corridas simuladas; el panel no se publica y
+  no sustituye una corrida real con proveedor.
 - La interfaz etiqueta la traza como reproducción; un streaming SSE queda como
   siguiente mejora, no se presenta como hecho.
 - El linaje es una fixture declarada de la demo, no un catálogo corporativo.

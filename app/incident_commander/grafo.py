@@ -278,15 +278,8 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
 
         estado["pasos"] = int(estado.get("pasos", 0)) + 1
         estado["llamadas_modelo"] = int(estado.get("llamadas_modelo", 0)) + 1
-        with observabilidad.traza(
-            "modelo-dic",
-            run_type="llm",
-            inputs={
-                "paso": int(estado["pasos"]),
-                "evidencia_previa": len(estado.get("evidencia", [])),
-                "herramientas_usadas": list(estado.get("herramientas_usadas", [])),
-            },
-            metadata={"presupuesto_restante": int(estado["presupuesto_tokens"]) - int(estado["tokens_consumidos"])},
+        with observabilidad.traza_modelo(
+            paso=int(estado["pasos"]), modelo=str(settings.llm_model)
         ) as span:
             sobre = cliente.solicitar_chat(
                 settings,
@@ -302,18 +295,12 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
                 for llamada in llamadas
                 if isinstance(llamada, dict)
             ]
-            if span is not None:
-                try:
-                    span.add_outputs(
-                        {
-                            "tokens": uso.get("total_tokens") if uso else None,
-                            "herramientas": nombres,
-                            "final": not bool(llamadas),
-                        }
-                    )
-                except Exception:
-                    # La traza externa es observabilidad, no parte del contrato.
-                    pass
+            observabilidad.anotar_modelo(
+                span,
+                uso=uso,
+                herramientas=nombres,
+                final=not bool(llamadas),
+            )
         if uso and isinstance(uso.get("total_tokens"), int):
             estado["tokens_consumidos"] = int(estado.get("tokens_consumidos", 0)) + int(
                 uso["total_tokens"]
@@ -478,23 +465,11 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
                 ) from exc
 
             try:
-                with observabilidad.traza(
-                    "herramienta-dic",
-                    run_type="tool",
-                    inputs={"herramienta": nombre, "paso": int(estado["pasos"])},
-                    metadata={"solo_lectura": True},
+                with observabilidad.traza_herramienta(
+                    nombre=nombre, paso=int(estado["pasos"])
                 ) as span:
                     resultado = definicion.ejecutar(servicio, estado["run_id"], validos)
-                    if span is not None:
-                        try:
-                            span.add_outputs(
-                                {
-                                    "resumen": resultado.get("resumen", ""),
-                                    "evidencia_id": resultado.get("evidencia_id", nombre),
-                                }
-                            )
-                        except Exception:
-                            pass
+                    observabilidad.anotar_herramienta(span, resultado)
             except dic.ScenarioError as exc:
                 _evento(
                     estado,
@@ -716,17 +691,17 @@ def ejecutar(
         "motivo_parada": None,
     }
 
-    with contexto_llm.reserva_de_run():
-        grafo = _compilar(servicio, settings)
-        resultado_estado = grafo.invoke(
-            estado,
-            config={
-                "recursion_limit": max(25, pasos_maximos * 3 + 5),
-                **observabilidad.config_traza(
-                    run_id=run_id,
-                    scenario_id=str(run["scenario_id"]),
-                    modo="agente",
-                ),
-            },
-        )
-    return _resultado(resultado_estado, modelo=str(settings.llm_model))
+    with observabilidad.traza_run(
+        run_id=run_id,
+        scenario_id=str(run["scenario_id"]),
+        modo=observabilidad.modo_para_modelo(str(settings.llm_model)),
+    ) as span_run:
+        with contexto_llm.reserva_de_run():
+            grafo = _compilar(servicio, settings)
+            resultado_estado = grafo.invoke(
+                estado,
+                config={"recursion_limit": max(25, pasos_maximos * 3 + 5)},
+            )
+        resultado = _resultado(resultado_estado, modelo=str(settings.llm_model))
+        observabilidad.anotar_run(span_run, resultado)
+        return resultado

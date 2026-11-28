@@ -49,6 +49,15 @@ def _sin_cuotas(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _phoenix_limpio(monkeypatch):
+    for nombre in ("PHOENIX_TRACING", "PHOENIX_OTLP_ENDPOINT", "PHOENIX_PROJECT_NAME"):
+        monkeypatch.delenv(nombre, raising=False)
+    observabilidad.reiniciar()
+    yield
+    observabilidad.reiniciar()
+
+
 def tool_call(nombre: str, argumentos: dict | None = None, *, identificador: str = "call-1") -> dict:
     return {
         "choices": [
@@ -203,32 +212,107 @@ def test_ruta_determinista_sin_configuracion() -> None:
     assert respuesta.json()["modo"] == "determinista"
 
 
-def test_langsmith_apagado_por_defecto(monkeypatch) -> None:
-    for nombre in (
-        "LANGSMITH_TRACING",
-        "LANGCHAIN_TRACING_V2",
-        "LANGSMITH_API_KEY",
-        "LANGCHAIN_API_KEY",
-    ):
-        monkeypatch.delenv(nombre, raising=False)
+def test_phoenix_apagado_por_defecto() -> None:
     assert observabilidad.habilitado() is False
-    assert observabilidad.config_traza(run_id="DI-1", scenario_id="missing", modo="agente") == {}
-    assert observabilidad.estado_publico() == {"langsmith": "desactivado"}
-    with observabilidad.traza("prueba", inputs={"paso": 1}) as span:
+    assert observabilidad.estado_publico() == {"phoenix": "desactivado"}
+    with observabilidad.traza_run(run_id="DI-1", scenario_id="missing", modo="simulado") as span:
+        assert span is None
+    with observabilidad.traza_modelo(paso=1, modelo="mock-agente-v1") as span:
+        assert span is None
+    with observabilidad.traza_herramienta(nombre="perfil_copia", paso=1) as span:
         assert span is None
 
 
-def test_langsmith_activo_solo_envia_metadatos_sanitizados(monkeypatch) -> None:
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "clave-ficticia-no-enviada")
-    config = observabilidad.config_traza(
-        run_id="DI-1", scenario_id="missing", modo="agente"
+def test_phoenix_exporta_spans_sanitizados_de_una_corrida(monkeypatch) -> None:
+    """Captura los spans en memoria: no hay red, pero sí SDK real de OTel."""
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
     )
-    assert config["run_name"] == "dic-agente"
-    assert config["metadata"]["run_id"] == "DI-1"
-    assert config["metadata"]["advisory_only"] is True
-    assert "clave-ficticia" not in json.dumps(config)
-    assert "prompt" not in json.dumps(config).lower()
+
+    exportador = InMemorySpanExporter()
+    proveedor = TracerProvider()
+    proveedor.add_span_processor(SimpleSpanProcessor(exportador))
+    monkeypatch.setattr(observabilidad, "_PROVEEDOR", proveedor)
+    monkeypatch.setattr(observabilidad, "_TRACER", None)
+
+    control = IncidentCommander(ajustes())
+    run = control.crear_run("missing")
+    respuestas = [
+        tool_call("perfil_copia"),
+        tool_call("linaje"),
+        plan_final(
+            evidencia=[
+                "perfil_copia: Faltan periodos PIB.",
+                "linaje: Activos aguas abajo.",
+            ]
+        ),
+    ]
+    monkeypatch.setattr(cliente, "post_chat", lambda *a, **k: respuestas.pop(0))
+    resultado = agente.ejecutar(control, run["run_id"], control.settings)
+
+    spans = exportador.get_finished_spans()
+    por_nombre = {span.name: span for span in spans}
+    raiz = por_nombre["dic.run"]
+    assert raiz.attributes["dic.run_id"] == run["run_id"]
+    assert raiz.attributes["dic.mode"] == "simulado"
+    assert raiz.attributes["dic.tools_order"] == "perfil_copia,linaje"
+    assert raiz.attributes["dic.outcome"] == "completado"
+    assert raiz.attributes["dic.calls_model"] == 3
+    assert raiz.attributes["dic.calls_tools"] == 2
+    assert raiz.attributes["dic.tokens_total"] == 300
+    assert raiz.attributes["dic.external_writes"] == 0
+
+    modelos = [span for span in spans if span.name == "dic.model"]
+    herramientas = [span for span in spans if span.name.startswith("dic.tool.")]
+    assert len(modelos) == 3
+    assert {span.name for span in herramientas} == {
+        "dic.tool.perfil_copia",
+        "dic.tool.linaje",
+    }
+    assert all(span.parent.span_id == raiz.context.span_id for span in modelos + herramientas)
+    assert modelos[-1].attributes["dic.final"] is True
+    assert modelos[0].attributes["llm.token_count.total"] == 100
+    assert modelos[0].attributes["dic.tools"] == "perfil_copia"
+
+    serializado = json.dumps(
+        [
+            {"nombre": span.name, "atributos": dict(span.attributes)}
+            for span in spans
+        ],
+        ensure_ascii=False,
+        default=str,
+    ).lower()
+    for prohibido in (
+        "eres un agente",
+        "clave-ficticia",
+        "prompt",
+        "argumentos",
+        "respuesta cruda",
+        "perfil_copia: faltan periodos",
+        "linaje: activos aguas abajo",
+        "127.0.0.1",
+    ):
+        assert prohibido not in serializado
+    assert resultado["observabilidad"] == {"phoenix": "activado"}
+
+
+def test_phoenix_endpoint_invalido_no_interrumpe(monkeypatch) -> None:
+    monkeypatch.setenv("PHOENIX_TRACING", "true")
+    monkeypatch.setenv("PHOENIX_OTLP_ENDPOINT", "file:///tmp/traza")
+    observabilidad.reiniciar()
+    assert observabilidad.habilitado() is False
+
+    control = IncidentCommander(ajustes())
+    run = control.crear_run("missing")
+    respuestas = [
+        tool_call("perfil_copia"),
+        plan_final(evidencia=["perfil_copia: Faltan periodos."]),
+    ]
+    monkeypatch.setattr(cliente, "post_chat", lambda *a, **k: respuestas.pop(0))
+    resultado = agente.ejecutar(control, run["run_id"], control.settings)
+    assert resultado["estado"] == "completado"
 
 
 def test_limite_de_pasos_incluye_eventos(monkeypatch) -> None:

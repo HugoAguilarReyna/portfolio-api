@@ -59,7 +59,7 @@ def tool_call(nombre: str, argumentos: dict[str, Any] | None = None, *, identifi
                 }
             }
         ],
-        "usage": {"total_tokens": 120},
+        "usage": {"prompt_tokens": 40, "completion_tokens": 80, "total_tokens": 120},
     }
 
 
@@ -79,7 +79,7 @@ def final(plan: str, evidencia: list[str]) -> dict:
                 }
             }
         ],
-        "usage": {"total_tokens": 120},
+        "usage": {"prompt_tokens": 40, "completion_tokens": 80, "total_tokens": 120},
     }
 
 
@@ -202,10 +202,19 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=RAIZ / "docs" / "trazas" / "agente-2026-11-27-simulado.json",
     )
+    parser.add_argument(
+        "--caso",
+        action="append",
+        choices=[caso["id"] for caso in CASOS],
+        help="repite el argumento para generar solo esos casos",
+    )
     args = parser.parse_args(argv)
     config = ajustes()
     servicio = IncidentCommander(config)
-    casos = [_resultado(servicio, caso, config) for caso in CASOS]
+    seleccionados = [
+        caso for caso in CASOS if not args.caso or caso["id"] in args.caso
+    ]
+    casos = [_resultado(servicio, caso, config) for caso in seleccionados]
     documento = {
         "fecha": "2026-11-27",
         "conjunto": "trazas sintéticas para revisión",
