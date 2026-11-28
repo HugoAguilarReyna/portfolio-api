@@ -407,7 +407,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Estado verificado en el repositorio: **521 pruebas pasan y 11 se omiten**. Las
+Estado verificado en el repositorio: **528 pruebas pasan y 11 se omiten**. Las
 omisiones no son fallos ocultos: requieren los boletines reales de la CNBV en
 `data/cnbv/` (periodos 202410, 202409 y 202310) y lo declaran con ese motivo. Los
 archivos se obtienen con `python -m scripts.importar_cnbv --descargar`; no se
@@ -448,6 +448,12 @@ llamada pasa por la reserva de cupo **antes** de tocar el proveedor.
   visitante no puede falsificar su IP.
 - El intervalo de 10 minutos es una protección adicional: con 1 consulta diaria
   por visitante, el límite diario ya es más estricto.
+- **Evaluador real con presupuesto monetario:** `scripts/evaluar_agente_dic.py`
+  activa `app/llm/presupuesto.py`; cada POST reserva una cota que incluye el
+  payload serializado (mensajes y esquemas de herramientas) y el máximo de salida.
+  Se concilia con el `usage` del proveedor y se conserva ante timeout, 5xx o
+  respuesta sin uso. El tope duro es **USD 0.50** y un modelo sin tarifa
+  verificada hace **cero** solicitudes.
 
 > Esta protección **no sustituye** el límite monetario del proyecto de OpenAI:
 > configúralo aparte (US$ 1/mes, alerta en US$ 0.50 y «Enforce a hard limit»). Es

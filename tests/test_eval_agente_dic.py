@@ -216,6 +216,54 @@ def test_proveedor_real_sin_credenciales_falla_antes_de_empezar(
     assert not salida.exists()
 
 
+def test_tope_real_no_puede_superar_050_usd(tmp_path, monkeypatch) -> None:
+    modulo = cargar_script()
+    env_real(monkeypatch)
+    llamadas = {"n": 0}
+
+    def post_chat(*args, **kwargs):
+        llamadas["n"] += 1
+        return plan_fijo()
+
+    monkeypatch.setattr(cliente, "post_chat", post_chat)
+    salida = tmp_path / "tope-excedido.json"
+    with pytest.raises(SystemExit) as salida_error:
+        modulo.main(
+            [
+                "--proveedor",
+                "openai",
+                "--salida",
+                str(salida),
+                "--max-costo-usd",
+                "0.51",
+            ]
+        )
+    assert salida_error.value.code == 2  # argparse: error de uso, sin corrida
+    assert llamadas["n"] == 0
+    assert not salida.exists()
+
+
+def test_modelo_sin_tarifa_falla_antes_de_la_primera_solicitud(
+    tmp_path, monkeypatch
+) -> None:
+    """Sin tarifa verificada no se puede acotar el gasto: cero solicitudes."""
+    modulo = cargar_script()
+    env_real(monkeypatch)
+    monkeypatch.setenv("LLM_MODEL", "modelo-sin-tarifa")
+    llamadas = {"n": 0}
+
+    def post_chat(*args, **kwargs):
+        llamadas["n"] += 1
+        return plan_fijo()
+
+    monkeypatch.setattr(cliente, "post_chat", post_chat)
+    salida = tmp_path / "sin-tarifa.json"
+    with pytest.raises(SystemExit, match="tarifa verificada"):
+        modulo.main(["--proveedor", "openai", "--salida", str(salida)])
+    assert llamadas["n"] == 0
+    assert not salida.exists()
+
+
 def test_proveedor_real_doblado_sin_red(tmp_path, monkeypatch, almacen) -> None:
     """Con credenciales ficticias y transporte doblado: no hay red real."""
     modulo = cargar_script()

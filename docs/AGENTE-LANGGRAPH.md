@@ -31,9 +31,11 @@ mientras `duplicate` usa `validaciones → catalogo_planes`.
 | `app/incident_commander/grafo.py` | `ejecutar()`: grafo LangGraph, estado, nodos y paradas |
 | `app/incident_commander/agente.py` | fachada `ejecutar()` y línea base `ejecutar_determinista()` |
 | `app/incident_commander/herramientas.py` | 7 herramientas Pydantic de solo lectura y validación |
+| `app/llm/presupuesto.py` | reserva, conciliación y retención monetaria del evaluador |
 | `app/incident_commander/observabilidad.py` | LangSmith opcional y metadatos sanitizados |
 | `app/api/v1/routes/incident_commander.py` | `POST …/agent` y `?flujo=determinista` |
 | `tests/test_agente_langgraph.py` | rutas distintas, evidencia, paradas, LangSmith |
+| `tests/test_presupuesto_llm.py` | reserva, tarifa desconocida, conciliación y fallo ambiguo |
 | `scripts/evaluar_agente_dic.py` | evaluación comparada y tope de costo |
 | `scripts/generar_trazas_dic.py` | trazas sanitizadas de rutas distintas, abstención y bloqueos |
 | `docs/trazas/agente-2026-11-27-simulado.json` | evidencia comparativa de las corridas |
@@ -64,6 +66,14 @@ run, escribe archivos, toca Atlas o ejecuta reparaciones.
 - `LLM_AGENTE_MAX_PASOS=6`, `LLM_AGENTE_MAX_SEGUNDOS=60` y
   `LLM_AGENTE_PRESUPUESTO_TOKENS=23000` por omisión.
 - Salida por llamada acotada a `min(LLM_MAX_TOKENS, 300)`.
+- **Presupuesto monetario del evaluador:** `app/llm/presupuesto.py` activa una
+  reserva antes de cada POST del transporte compartido. La cota suma los bytes
+  UTF-8 del payload (mensajes, esquemas de herramientas, modelo y parámetros) a
+  la tarifa de entrada, más el `max_tokens` efectivo a la tarifa de salida. Cada
+  reintento del agente vuelve a reservar. Con `usage` se concilia y se libera lo
+  no consumido; un timeout, 5xx o respuesta sin uso conserva la reserva porque
+  pudo cobrarse. Un modelo sin tarifa verificada falla antes de la primera
+  solicitud. El tope del evaluador es **USD 0.50**.
 - Paradas explícitas:
   - **pasos:** `AgenteLimitePasos` (502 con traza y eventos);
   - **tiempo:** `AgenteTiempo` (504 con traza y eventos);
@@ -94,9 +104,10 @@ La pestaña **«Flujo del agente»** del tablero muestra:
   interno;
 - la etiqueta **«Reproducción de la corrida»** porque la API entrega la traza al
   finalizar; no se simula streaming;
-- **«Simulación determinista · local»** cuando no hay run conectado y se usa la
-  alternativa local, y **«Flujo determinista · API»** cuando se consulta el
-  endpoint;
+- el modo real del resultado se distingue explícitamente: **«Resultado · modelo
+  real»**, **«Resultado · simulación»**, **«Resultado · respaldo determinista»**
+  o **«Resultado · error»**. La simulación local determinista también se marca
+  como simulación, no como una corrida real;
 - el aviso de cero escrituras y la autoridad consultiva.
 
 El verificador `tools/verificar-agent-flow.mjs` intercepta la API, comprueba que
@@ -153,7 +164,20 @@ El agente y el baseline se miden por separado en
 **real** no se ejecutó: en este entorno no hay `LLM_API_KEY`, `LLM_MODEL` ni
 `LLM_CUOTA_HMAC_KEY`. El script aborta antes de la primera llamada si faltan, y el
 tope de evaluación es **USD 0.50**; para una corrida real se debe ajustar el cupo
-de evaluación en un entorno seguro y revisar el costo medido.
+de evaluación en un entorno seguro y revisar el costo medido, que se contrasta
+con el `usage` reportado por el proveedor y con el gasto conservador retenido por
+el presupuesto.
+
+Pruebas del presupuesto (sin red, proveedor doblado):
+
+```bash
+python -m pytest tests/test_presupuesto_llm.py tests/test_eval_agente_dic.py -q
+```
+
+Cubren: (a) varias llamadas que se detienen antes de exceder el saldo; (b) tarifa
+desconocida con **cero** solicitudes; (c) fallo ambiguo que conserva la reserva y
+bloquea la siguiente llamada; (d) conciliación con `usage`; y (e) que la cota
+incluye herramientas y `max_tokens`.
 
 Diferencias que la tabla no debe ocultar:
 
@@ -171,9 +195,10 @@ Diferencias que la tabla no debe ocultar:
 # suite completa (entorno local con shim de pyOpenSSL)
 python -m pytest -q
 
-# pruebas específicas
+# pruebas específicas (incluye presupuesto monetario y evaluador)
 python -m pytest tests/test_agente_dic.py tests/test_agente_langgraph.py \
-  tests/test_eval_agente_dic.py tests/test_mcp_banxico.py -q
+  tests/test_eval_agente_dic.py tests/test_presupuesto_llm.py \
+  tests/test_mcp_banxico.py -q
 
 # trazas sanitizadas comparativas
 python scripts/generar_trazas_dic.py
@@ -185,9 +210,9 @@ python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
 node tools/verificar-agent-flow.mjs
 ```
 
-En la ejecución local: **521 passed, 11 skipped** en la suite completa; **39
-pruebas específicas** del agente/evaluación/MCP y **27 comprobaciones** del flujo de
-navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
+En la ejecución local: **528 passed, 11 skipped** en la suite completa; **46
+pruebas específicas** del agente/evaluación/presupuesto/MCP y **31 comprobaciones**
+del flujo de navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
 reales descargados. El entorno de desarrollo requirió un shim local de pyOpenSSL
 por una incompatibilidad de la máquina, no del repositorio; CI instala las
 dependencias fijadas.
@@ -218,6 +243,7 @@ expone fuera de local. Contrato completo: [`MCP-ANALISTA.md`](MCP-ANALISTA.md).
 |---|---|---|---|---|
 | **LangGraph** | `app/incident_commander/grafo.py` | `pytest tests/test_agente_langgraph.py`; corridas con guion y `scripts/generar_trazas_dic.py` | Grafo con nodos modelo/herramienta/validación; dos rutas distintas (`perfil→linaje` y `perfil→validaciones`); abstención, bloqueo y parada por presupuesto | Corrida con modelo real; hoy el proveedor es simulado |
 | **LangChain** | `app/incident_commander/herramientas.py` | `convert_to_openai_tool` sobre los siete modelos Pydantic; pruebas del catálogo | Esquemas de herramientas tipados y validados por el servidor | Nada adicional para este alcance |
+| **Presupuesto monetario** | `app/llm/presupuesto.py` + `cliente.post_chat` | `pytest tests/test_presupuesto_llm.py tests/test_eval_agente_dic.py` con transporte doblado | Reserva por POST con entrada, herramientas y salida; conciliación con `usage`; retención ante fallo ambiguo; tarifa desconocida sin solicitudes | Corrida real: faltan credenciales aisladas; no se inventó consumo |
 | **LangSmith** | `app/incident_commander/observabilidad.py` y `grafo.py` | `pytest` del modo apagado y de la configuración saneada; spans `modelo-dic` y `herramienta-dic` | La demo funciona con la traza apagada; con bandera y clave envía ruta, herramientas, tiempos y resúmenes sanitizados | Verificación remota: falta `LANGSMITH_API_KEY`; no se envió ninguna traza real |
 | **MCP** | `app/mcp_banxico/server.py` + `scripts/mcp_cliente_banxico.py` | `python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json` | Descubrimiento de `banxico_buscar_fragmentos`, invocación real con `BM-2026-11-05-TASA`, abstención y límite de 3 fragmentos; servidor stdio no público | Analista de producto, autenticación y aislamiento si se expone fuera de local |
 
@@ -228,7 +254,11 @@ verificada, pero no una verificación remota ni un despliegue público.
 ## 10. Bloqueos y pendientes
 
 - Corrida real con un modelo: faltan credenciales del entorno seguro; no se
-  inventaron métricas ni se usó una clave del repositorio.
+  inventaron métricas ni se usó una clave del repositorio. La corrida queda
+  pendiente con tope USD 0.50 y solo debe ejecutarse con credenciales aisladas.
+- Presupuesto monetario: la lógica y las pruebas con proveedor doblado están
+  completas; la conciliación contra un `usage` real del proveedor necesita esa
+  misma corrida pendiente.
 - Despliegue: fuera de alcance; los cambios se entregan como ramas/PRs revisables.
 - LangSmith: no se ejecutó una traza real contra el servicio porque no hay
   `LANGSMITH_API_KEY`; la prueba cubre el apagado y la configuración saneada.

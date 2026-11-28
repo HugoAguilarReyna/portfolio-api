@@ -22,6 +22,7 @@ import json
 import os
 import sys
 import time
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -34,7 +35,7 @@ from app.config import Settings  # noqa: E402
 from app.evals import dic as evals  # noqa: E402
 from app.incident_commander import agente  # noqa: E402
 from app.incident_commander.service import IncidentCommander  # noqa: E402
-from app.llm import cliente, contexto, limites  # noqa: E402
+from app.llm import cliente, contexto, limites, presupuesto  # noqa: E402
 
 PROVEEDORES = ("simulado", "openai", "deepseek")
 BASES = {
@@ -44,6 +45,8 @@ BASES = {
 #: USD por millón de tokens (entrada, salida). Verificado el 2026-11-22 en
 #: https://developers.openai.com/api/docs/pricing (Standard, gpt-4.1-mini).
 TARIFAS = {"gpt-4.1-mini": (0.40, 1.60)}
+#: Tope duro de la corrida real completa, en USD.
+MAX_COSTO_REAL_USD = 0.50
 IDENTIFICADOR_EVALUACION = "evaluacion-automatica"
 
 
@@ -401,9 +404,16 @@ def evaluar(
             agente.AgenteTiempo,
             cliente.LlmRespuestaInvalida,
             cliente.LlmUpstreamError,
+            presupuesto.PresupuestoAgotado,
+            presupuesto.TarifaDesconocida,
         ) as exc:
             latencia = int((time.perf_counter() - inicio) * 1000)
             filas.append(_fila_incidente(caso, None, exc, latencia_ms=latencia))
+            if isinstance(
+                exc, (presupuesto.PresupuestoAgotado, presupuesto.TarifaDesconocida)
+            ):
+                abortada = True
+                break
         if medidor is not None:
             costo = costo_estimado(settings.llm_model or "", medidor.entrada, medidor.salida)
             if costo is not None and costo >= max_costo_usd:
@@ -426,9 +436,15 @@ def main(argv: list[str] | None = None) -> int:
         "--max-costo-usd",
         type=float,
         default=0.50,
-        help="tope de costo estimado para corridas reales (USD)",
+        help="tope de costo para corridas reales (USD, máximo 0.50)",
     )
     args = parser.parse_args(argv)
+
+    if args.proveedor != "simulado" and not (0 < args.max_costo_usd <= MAX_COSTO_REAL_USD):
+        parser.error(
+            f"--max-costo-usd debe estar entre 0 y {MAX_COSTO_REAL_USD:.2f} USD "
+            "para una corrida real"
+        )
 
     incidentes = evals.cargar_incidentes()
     destino = args.salida or ruta_salida(args.proveedor)
@@ -439,6 +455,8 @@ def main(argv: list[str] | None = None) -> int:
     original_reservar_llamada = limites.reservar_llamada
     token_ip = None
     preparar_caso: Callable[[dict[str, Any]], None] | None = None
+    gestor_monetario: presupuesto.PresupuestoMonetario | None = None
+    contexto_presupuesto: Any = nullcontext()
     if args.proveedor == "simulado":
         settings = settings_simulado()
         medidor = None
@@ -466,6 +484,20 @@ def main(argv: list[str] | None = None) -> int:
         ]
     else:
         settings = settings_real(args.proveedor)
+        try:
+            gestor_monetario = presupuesto.PresupuestoMonetario.para_modelo(
+                tope_usd=args.max_costo_usd,
+                modelo=settings.llm_model or "",
+                tarifas=TARIFAS,
+            )
+        except (
+            presupuesto.TarifaDesconocida,
+            presupuesto.PresupuestoInvalido,
+        ) as exc:
+            raise SystemExit(
+                f"No se inició la corrida real: {exc} No se hizo ninguna solicitud."
+            ) from exc
+        contexto_presupuesto = presupuesto.usar(gestor_monetario)
         token_ip = contexto.fijar_ip(IDENTIFICADOR_EVALUACION)
         medidor = MedidorTokens(original_post_chat)
         cliente.post_chat = medidor
@@ -475,6 +507,10 @@ def main(argv: list[str] | None = None) -> int:
             "La corrida usa un identificador de evaluación, pero consume cuotas reales: "
             "ajusta LLM_MAX_SOLICITUDES_POR_IP_DIA / LLM_MAX_SOLICITUDES_DIA / "
             "LLM_MAX_TOKENS_DIA en el entorno antes de correrla.",
+            "Antes de cada POST se retiene una cota monetaria (entrada serializada, "
+            "esquemas de herramientas y máximo de salida). Con `usage` se concilia; "
+            "ante timeout, 5xx o respuesta sin uso la reserva se conserva porque pudo "
+            "cobrarse. Un modelo sin tarifa verificada hace cero solicitudes.",
             "El baseline determinista se calcula comparando «quarantine» con el plan "
             "esperado de cada incidente.",
             "Las métricas cubren todos los incidentes, adversariales incluidos: "
@@ -488,14 +524,15 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     try:
-        filas, abortada = evaluar(
-            incidentes,
-            settings,
-            proveedor=args.proveedor,
-            medidor=medidor,
-            max_costo_usd=args.max_costo_usd,
-            preparar_caso=preparar_caso,
-        )
+        with contexto_presupuesto:
+            filas, abortada = evaluar(
+                incidentes,
+                settings,
+                proveedor=args.proveedor,
+                medidor=medidor,
+                max_costo_usd=args.max_costo_usd,
+                preparar_caso=preparar_caso,
+            )
     finally:
         cliente.post_chat = original_post_chat
         limites.reservar_run = original_reservar_run
@@ -508,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     costo = None
     if medidor is not None:
         costo = costo_estimado(settings.llm_model or "", medidor.entrada, medidor.salida)
+    resumen_presupuesto = gestor_monetario.resumen() if gestor_monetario is not None else None
 
     resultado = {
         "conjunto": {"version": evals.VERSION, "sintetico": True, "incidentes": len(incidentes)},
@@ -523,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
             "presupuesto_tokens": settings.llm_agente_presupuesto_tokens,
             "max_costo_usd": args.max_costo_usd,
             "abortada_por_costo": abortada,
+            "presupuesto_monetario": resumen_presupuesto,
         },
         "metricas": metricas,
         "metricas_agente": metricas,
@@ -544,6 +583,12 @@ def main(argv: list[str] | None = None) -> int:
         },
         "costo": {
             "usd": costo if costo is not None else "no calculable",
+            "gastado_conservador_usd": (
+                resumen_presupuesto["gastado_usd"] if resumen_presupuesto else None
+            ),
+            "sin_uso_reportado": (
+                resumen_presupuesto["sin_uso_reportado"] if resumen_presupuesto else None
+            ),
             "tope_usd": args.max_costo_usd,
             "abortada_por_tope": abortada,
             "motivo": (
@@ -574,7 +619,14 @@ def main(argv: list[str] | None = None) -> int:
         f"(excluidos {len(baseline['excluidos_por_violacion'])})"
     )
     print(f"latencia media: {metricas['latencia_ms']['media']} ms")
-    print(f"costo: {resultado['costo']['usd']} (tope {args.max_costo_usd} USD)")
+    print(f"costo medido: {resultado['costo']['usd']} (tope {args.max_costo_usd} USD)")
+    if resumen_presupuesto:
+        print(
+            "presupuesto conservador: "
+            f"{resumen_presupuesto['gastado_usd']:.9f} USD retenidos/conciliados · "
+            f"{resumen_presupuesto['llamadas_facturables']} solicitudes · "
+            f"{resumen_presupuesto['sin_uso_reportado']} sin uso reportado"
+        )
     print(f"resultados en {destino}")
     return 2 if abortada else 0
 
