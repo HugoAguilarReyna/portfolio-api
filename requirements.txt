@@ -12,4 +12,10 @@ lightgbm==4.7.0
 numpy==2.5.4
 # Lectura de los boletines XLSX/XLSM de la CNBV (datos públicos reales).
 openpyxl==3.1.5
+# Orquestación del agente de Data Incident Commander. LangGraph representa el
+# estado y las transiciones; langchain-core aporta los tipos que LangGraph usa
+# y langsmith queda como traza opcional, apagada por omisión.
+langgraph==1.2.4
+langchain-core==1.4.0
+langsmith==0.8.14
 

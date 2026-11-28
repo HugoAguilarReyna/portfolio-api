@@ -138,7 +138,7 @@ def plan_final() -> dict:
                         {
                             "recommendation": "quarantine",
                             "justification": "La evidencia sostiene el plan.",
-                            "evidence": ["Una validación falla."],
+                            "evidence": ["validaciones: Una validación falla."],
                             "risks": ["Depende del cierre."],
                         }
                     )

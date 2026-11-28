@@ -39,11 +39,13 @@ conciliación de cada migración, en los documentos de cada tablero.
 > el briefing responde de forma extractiva y el copiloto usa solo su parser local.
 > El briefing usa `portfolio_demos.rag_banxico_chunks`; instrucciones en
 > [`banxico-evidence-briefing`](https://github.com/Dev-HugoAguilar/banxico-evidence-briefing).
-> Data Incident Commander es determinista y, por omisión, no llama a ningún modelo.
-> Opcionalmente puede pedir una **segunda opinión consultiva** a un proveedor
-> compatible con OpenAI (LLM_BASE_URL, LLM_MODEL, LLM_API_KEY): valida el JSON,
-> admite solo quarantine, ackfill y ullreload —orward sigue bloqueado— y
-> nunca aprueba ni ejecuta. Sin las tres variables, esa ruta responde 503.
+> Data Incident Commander conserva un flujo determinista y añade un **agente
+> supervisor LangGraph** de solo lectura. Sin las tres variables del proveedor
+> (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`), la ruta `/agent` responde 503 y el
+> flujo determinista (`?flujo=determinista`) sigue disponible. Con proveedor, el
+> agente elige herramientas, valida evidencia y devuelve una recomendación
+> consultiva; solo admite quarantine, backfill y fullreload —forward sigue
+> bloqueado— y nunca aprueba ni ejecuta.
 
 > El dataset sintético (`demo_rentabilidad_2024_2025`) **se archivó fuera del
 > clúster** (`data/ventas/sales.jsonl.gz`): el sitio publicado no lo consulta y sus
@@ -68,6 +70,8 @@ conciliación de cada migración, en los documentos de cada tablero.
 | Pydantic / pydantic-settings | 2.12.4 / 2.12.0 | Modelos y configuración |
 | PyMongo | 4.15.4 | Acceso a MongoDB (síncrono) |
 | openpyxl | 3.1.5 | Lectura de los boletines XLSX de la CNBV |
+| LangGraph / langchain-core | 1.2.4 / 1.4.0 | Grafo del agente supervisor del DIC |
+| LangSmith | 0.8.14 | Trazas opcionales, desactivadas por omisión |
 | MongoDB | MongoDB Atlas, plan M0 (512 MB, compartido) | Base de datos documental |
 | pytest + httpx | 8.4.2 / 0.28.1 | Pruebas |
 
@@ -100,7 +104,10 @@ configuran las tres variables del modelo; no usa embeddings ni búsqueda vectori
 │   │   └── service.py            # corpus, Atlas opcional, LLM opcional, salud
 │   ├── nl_sql/                   # parser léxico, SQL parametrizado y SQLite
 │   │   └── service.py            # snapshot WDI, plantillas y auditoría opcional
-│   ├── incident_commander/       # AgentOps determinista con runs en memoria
+│   ├── incident_commander/       # AgentOps: flujo determinista + grafo LangGraph
+│   │   ├── agente.py             # fachada y línea base determinista
+│   │   ├── grafo.py              # estado, nodos, herramientas y paradas
+│   │   ├── herramientas.py       # catálogo Pydantic de solo lectura
 │   │   └── service.py            # escenarios, validaciones y recibos locales
 │   ├── models/
 │   │   ├── filters.py            # filtros y orden permitido (validación)
@@ -282,7 +289,7 @@ python -m scripts.verificar_cnbv     # 56.248 hechos conciliados, 0 discrepancia
 | GET | `/api/v1/copiloto-nl-sql/data` | Snapshot WDI versionable |
 | GET | `/api/v1/copiloto-nl-sql/query?question=...` | Plan léxico, SQL parametrizado y filas |
 
-**Data Incident Commander · AgentOps determinista:**
+**Data Incident Commander · AgentOps supervisado:**
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -291,6 +298,7 @@ python -m scripts.verificar_cnbv     # 56.248 hechos conciliados, 0 discrepancia
 | POST | `/api/v1/incident-commander/runs` | Inicia un escenario en copia temporal |
 | POST | `/api/v1/incident-commander/runs/{run_id}/approve` | Rechaza o simula una reparación |
 | POST | `/api/v1/incident-commander/runs/{run_id}/analysis` | Segunda opinión consultiva del modelo (no aprueba ni ejecuta) |
+| POST | `/api/v1/incident-commander/runs/{run_id}/agent` | Grafo LangGraph de solo lectura; `?flujo=determinista` para la línea base |
 
 Contratos: `docs/CNBV-COMPARATIVO-BANCARIO.md` (documento interno del monorepo, no publicado)
 (datos reales) y [`docs/API-DASHBOARD-RENTABILIDAD.md`(documento interno del monorepo, no publicado)
@@ -518,44 +526,75 @@ fragmento, incluye `chunk_id`, `source_id`, `heading`, `content` y la fuente en
 `corpus.json/sources` con `title`, `date`, `kind` y `url` oficial; sin esa
 procedencia verificable no debe añadirse.
 
-### Agente con herramientas · Data Incident Commander (solo lectura)
+### Agente supervisor · Data Incident Commander (LangGraph, solo lectura)
 
-`POST /api/v1/incident-commander/runs/{run_id}/agent` ejecuta un bucle de agente
-con **herramientas de solo lectura** sobre el run: máximo 6 pasos y presupuesto de
-tokens configurable (`LLM_AGENTE_MAX_PASOS`, `LLM_AGENTE_PRESUPUESTO_TOKENS`).
+`POST /api/v1/incident-commander/runs/{run_id}/agent` ejecuta un **grafo LangGraph**
+con herramientas de solo lectura. El estado de la corrida contiene el incidente,
+la evidencia consultada, el presupuesto restante, los errores y la recomendación.
+El modelo elige la siguiente herramienta; el servidor valida nombre, argumentos,
+política y vínculo de la evidencia. `?flujo=determinista` devuelve la línea base
+sin LLM y sin consumir cuotas.
+
+```text
+preparar → modelo ─┬─ herramienta → modelo
+                   ├─ final (validación humana pendiente)
+                   └─ parada (presupuesto/tiempo/evidencia insuficiente)
+```
 
 | Herramienta | Devuelve |
 |---|---|
 | `estado_run` | Estado y si hay aprobación registrada |
+| `perfil_copia` | Perfil agregado: filas, cobertura, códigos, duplicados y tipos |
+| `linaje` | Activos declarados aguas abajo de un indicador (fixture de la demo) |
 | `validaciones` | Validaciones del run sobre la copia de trabajo |
 | `matriz_planes` | Matriz de criterios por plan |
 | `catalogo_planes` | Planes permitidos y bloqueados |
-| `snapshot` | Metadatos del snapshot y su digest |
+| `snapshot` | Metadatos del snapshot y sus fuentes |
 
-- Cada herramienta tiene contrato Pydantic con `extra="forbid"`; el nombre y los
-  argumentos se validan antes de ejecutar y nunca escriben.
+- Cada herramienta tiene contrato Pydantic con `extra="forbid"`; se valida antes
+  de ejecutar y ninguna escribe.
+- Límites: `LLM_AGENTE_MAX_PASOS` (6), `LLM_AGENTE_MAX_SEGUNDOS` (60) y
+  `LLM_AGENTE_PRESUPUESTO_TOKENS` (23 000). Una sola reserva de cuota por run;
+  todas las llamadas del grafo computan contra el mismo presupuesto.
 - El modelo **no** puede aprobar, cambiar estados, escribir fuera ni ejecutar
-  remediaciones: cualquier herramienta o argumento fuera de catálogo se rechaza
-  (422 con la traza) y queda registrado.
-- La traza es segura (paso, tipo, herramienta, plan): sin prompts completos, sin
-  credenciales y sin datos sensibles.
-- La respuesta es consultiva (`advisory_only`, `external_writes: 0`); la
-  aprobación humana y la simulación en `POST /runs/{id}/approve` no cambian.
-- Ante límite de pasos, presupuesto agotado, error del proveedor o salida
-  inválida, la ruta responde 502/503 y el flujo determinista sigue disponible.
+  remediaciones. Una herramienta o argumento fuera de catálogo se rechaza (422
+  con traza y eventos) y la evidencia debe citar una herramienta consultada.
+- La respuesta incluye `traza` y `eventos` observables (entrada, modelo, selección,
+  herramienta, resultado, validación, recomendación y revisión humana), sin
+  prompts, razonamiento interno, credenciales ni filas crudas.
+- `observabilidad.langsmith` informa si la traza externa está activa. Se habilita
+  solo con `LANGSMITH_TRACING=true` y `LANGSMITH_API_KEY`; los metadatos enviados
+  se limitan a run, escenario, flujo y avisos de política. La demo funciona con
+  LangSmith desactivado.
+- Ante presupuesto, tiempo, pasos o evidencia insuficiente, la corrida se detiene
+  y devuelve el motivo y la traza parcial. El flujo determinista sigue disponible.
 
 Evaluación reproducible con proveedor simulado:
 
 ```bash
-python scripts/evaluar_agente_dic.py
+python scripts/evaluar_agente_dic.py --proveedor simulado
+python scripts/evaluar_agente_dic.py --proveedor openai --max-costo-usd 0.50
 ```
 
-Conjunto sintético de 12 incidentes (`app/evals/dic/incidentes.jsonl`) con las
-herramientas esperadas y el plan esperado. Resultado simulado del 2026-11-22:
-10/12 cerrados, plan correcto 1.0 y herramientas exactas 1.0 entre los cerrados,
-2.9 pasos de media, 2 violaciones de política bloqueadas y **0 escrituras**; el
-baseline determinista resuelve 12/12. Son cifras del doble simulado, **no** del
-modelo real; no hay coste en USD calculable.
+Conjunto sintético de 14 incidentes (`app/evals/dic/incidentes.jsonl`), incluidos
+12 evaluables y 2 adversariales. Resultado simulado del 2026-11-27:
+
+| Métrica | Agente LangGraph | Determinista |
+|---|---:|---:|
+| Plan correcto (12 evaluables) | 12/12 | 8/12 |
+| Selección de herramientas exacta | 12/12 | n/a (3 fijas) |
+| Bloqueos de seguridad (2) | 2/2 | 0/2 |
+| Llamadas al modelo / herramientas | 35 / 23 | 0 / 42 |
+| Latencia media local | 17.8 ms | ~0 ms |
+| Escrituras externas | 0 | 0 |
+
+Son cifras del doble simulado, **no** de un modelo real. La corrida real no se
+ejecutó porque este entorno no tiene `LLM_API_KEY`, `LLM_MODEL` ni
+`LLM_CUOTA_HMAC_KEY`; el script aborta antes de cualquier llamada y el tope de
+evaluación es USD 0.50. Detalle de arquitectura y evidencia:
+[`docs/AGENTE-LANGGRAPH.md`](docs/AGENTE-LANGGRAPH.md). La decisión sobre MCP está
+documentada en [`docs/MCP-ANALISTA.md`](docs/MCP-ANALISTA.md): no hay consumidor
+concreto todavía y no se implementó un servidor MCP.
 
 
 ## Contrato de evidencia del briefing

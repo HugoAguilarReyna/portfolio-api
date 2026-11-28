@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.config import Settings
@@ -157,14 +157,23 @@ def analyse_run(run_id: str, servicio: IncidentDep) -> dict:
 
 @router.post(
     "/runs/{run_id}/agent",
-    summary="Agente de solo lectura con herramientas (máximo 6 pasos)",
+    summary="Agente supervisor LangGraph (máximo 6 pasos) o flujo determinista",
 )
-def run_agent(run_id: str, servicio: IncidentDep) -> dict:
+def run_agent(
+    run_id: str,
+    servicio: IncidentDep,
+    flujo: Literal["agente", "determinista"] = Query(
+        "agente",
+        description="«agente» usa el grafo LangGraph; «determinista» es la línea base sin LLM.",
+    ),
+) -> dict:
     """Bucle con herramientas de lectura; no aprueba ni escribe."""
     from app.incident_commander import agente
 
     settings = servicio.settings
     try:
+        if flujo == "determinista":
+            return agente.ejecutar_determinista(servicio, run_id)
         return agente.ejecutar(servicio, run_id, settings)
     except RunNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -181,16 +190,32 @@ def run_agent(run_id: str, servicio: IncidentDep) -> dict:
     except agente.AgentePolitica as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"detail": str(exc), "traza": exc.traza},
+            detail={"detail": str(exc), "traza": exc.traza, "eventos": exc.eventos},
         ) from exc
     except agente.AgentePresupuesto as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"detail": str(exc), "traza": exc.traza, "motivo": "presupuesto"},
+            detail={
+                "detail": str(exc),
+                "traza": exc.traza,
+                "eventos": exc.eventos,
+                "motivo": "presupuesto",
+            },
+        ) from exc
+    except agente.AgenteTiempo as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={
+                "detail": str(exc),
+                "traza": exc.traza,
+                "eventos": exc.eventos,
+                "motivo": "tiempo",
+            },
         ) from exc
     except agente.AgenteLimitePasos as exc:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"detail": str(exc), "traza": exc.traza, "eventos": exc.eventos},
         ) from exc
     except (cliente.LlmUpstreamError, cliente.LlmRespuestaInvalida) as exc:
         raise HTTPException(

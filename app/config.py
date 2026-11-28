@@ -138,6 +138,9 @@ class Settings(BaseSettings):
     llm_intervalo_minimo_s: int = Field(default=600, ge=0, le=86_400)
     #: Bucle de agente con herramientas (Incident Commander).
     llm_agente_max_pasos: int = Field(default=6, ge=1, le=12)
+    #: Tiempo de pared máximo de una investigación con herramientas, en segundos.
+    #: Es independiente del timeout de cada llamada al proveedor.
+    llm_agente_max_segundos: float = Field(default=60.0, ge=10.0, le=180.0)
     #: Presupuesto de tokens del run (entrada+salida sumadas por el bucle).
     #: PROVISIONAL hasta medir un run real: sale del peor caso medido con
     #: `python scripts/medir_prompt_agente.py` (contexto al tope, 6 pasos y

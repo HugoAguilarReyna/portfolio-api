@@ -1,0 +1,201 @@
+# Data Incident Commander · agente supervisor con LangGraph
+
+**Fecha:** 27 de noviembre de 2026
+**Alcance:** primera integración real de agentes y orquestación en
+`HugoAguilarReyna/portfolio-api` y `HugoAguilarReyna/portafolio-hugo-aguilar`.
+No incluye despliegue a producción.
+
+## 1. Qué se implementó
+
+El endpoint existente `POST /api/v1/incident-commander/runs/{run_id}/agent` ya no
+usa un bucle `for` artesanal. Ahora ejecuta un **grafo LangGraph** que hace
+explícito el estado de la investigación:
+
+```text
+preparar → modelo ─┬─ herramienta → modelo
+                   ├─ final (recomendación pendiente de revisión humana)
+                   └─ parada (presupuesto, tiempo o evidencia insuficiente)
+```
+
+El modelo elige una herramienta de solo lectura, el servidor valida el nombre y
+los argumentos, la herramienta devuelve un resumen y el modelo decide el
+siguiente paso. La recomendación final se valida contra el catálogo de planes y
+contra la evidencia efectivamente consultada. Dos incidentes pueden recorrer
+rutas distintas: por ejemplo, `missing` puede usar `perfil_copia → linaje`,
+mientras `duplicate` usa `validaciones → catalogo_planes`.
+
+### Archivos
+
+| Archivo | Punto de entrada / responsabilidad |
+|---|---|
+| `app/incident_commander/grafo.py` | `ejecutar()`: grafo LangGraph, estado, nodos y paradas |
+| `app/incident_commander/agente.py` | fachada `ejecutar()` y línea base `ejecutar_determinista()` |
+| `app/incident_commander/herramientas.py` | 7 herramientas Pydantic de solo lectura y validación |
+| `app/incident_commander/observabilidad.py` | LangSmith opcional y metadatos sanitizados |
+| `app/api/v1/routes/incident_commander.py` | `POST …/agent` y `?flujo=determinista` |
+| `tests/test_agente_langgraph.py` | rutas distintas, evidencia, paradas, LangSmith |
+| `scripts/evaluar_agente_dic.py` | evaluación comparada y tope de costo |
+| `app/evals/dic/resultados/agente-2026-11-27-langgraph-simulado.json` | resultados simulados |
+| `dist/dashboards/data-incident-commander/*` (sitio) | pestaña «Flujo del agente» y reproducción |
+
+### Herramientas
+
+| Nombre | Entrada | Salida observable |
+|---|---|---|
+| `estado_run` | sin argumentos | estado y aprobación del run |
+| `perfil_copia` | sin argumentos | filas, columnas, cobertura PIB, duplicados y tipos |
+| `linaje` | `indicador` opcional | activos declarados aguas abajo (fixture marcado) |
+| `validaciones` | `plan_id` opcional | checks aprobados/fallidos |
+| `matriz_planes` | sin argumentos | criterios por plan |
+| `catalogo_planes` | sin argumentos | planes permitidos y bloqueados |
+| `snapshot` | sin argumentos | dataset, fuentes y digest |
+
+Todas tienen `model_config = ConfigDict(extra="forbid")`, se validan antes de
+ejecutarse y devuelven `solo_lectura: true`. Ninguna aprueba, cambia el estado del
+run, escribe archivos, toca Atlas o ejecuta reparaciones.
+
+## 2. Límites y cuotas
+
+- Una sola reserva por run (`limites.reservar_run`) antes de invocar el grafo.
+  Todos los pasos del grafo usan `cliente.solicitar_chat` y computan contra esa
+  reserva y contra el presupuesto de tokens del run.
+- `LLM_AGENTE_MAX_PASOS=6`, `LLM_AGENTE_MAX_SEGUNDOS=60` y
+  `LLM_AGENTE_PRESUPUESTO_TOKENS=23000` por omisión.
+- Salida por llamada acotada a `min(LLM_MAX_TOKENS, 300)`.
+- Paradas explícitas:
+  - **pasos:** `AgenteLimitePasos` (502 con traza y eventos);
+  - **tiempo:** `AgenteTiempo` (504 con traza y eventos);
+  - **presupuesto:** `AgentePresupuesto` (502 con traza y eventos);
+  - **evidencia insuficiente:** corrida `estado: detenido`,
+    `motivo_parada: evidencia_insuficiente`, sin recomendación.
+- La recomendación final solo admite `quarantine`, `backfill` o `fullreload`;
+  `forward` está bloqueado. Cada elemento de `evidence` debe empezar por una
+  herramienta realmente consultada (`validaciones: …`).
+- La revisión humana sigue siendo obligatoria. El agente no llama a
+  `POST /runs/{id}/approve` y no modifica `run["status"]`.
+
+## 3. Flujo determinista como línea base
+
+`POST /api/v1/incident-commander/runs/{run_id}/agent?flujo=determinista` devuelve
+la alternativa sin LLM y sin cuota. Ejecuta `perfil_copia`, `linaje` y
+`validaciones`, propone `quarantine` y publica los mismos eventos observables.
+Se conserva para que la demo funcione sin proveedor y para comparar selección de
+herramientas, plan, bloqueos, llamadas y latencia.
+
+## 4. Interfaz
+
+La pestaña **«Flujo del agente»** del tablero muestra:
+
+- entrada del incidente, LLM en el centro, herramienta elegida, resultado devuelto
+  al modelo, validación del servidor y recomendación pendiente de revisión humana;
+- la lista de **acciones observables** con resúmenes, sin prompts ni razonamiento
+  interno;
+- la etiqueta **«Reproducción de la corrida»** porque la API entrega la traza al
+  finalizar; no se simula streaming;
+- **«Simulación determinista · local»** cuando no hay run conectado y se usa la
+  alternativa local, y **«Flujo determinista · API»** cuando se consulta el
+  endpoint;
+- el aviso de cero escrituras y la autoridad consultiva.
+
+El verificador `tools/verificar-agent-flow.mjs` intercepta la API, comprueba que
+no hay llamada automática al cargar, que la traza se reproduce, que el baseline
+se distingue y que no hay desbordes a 390 px.
+
+## 5. LangSmith
+
+La integración está **apagada por omisión**. Solo se activa con:
+
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=...          # secreto del entorno, nunca del repositorio
+LANGSMITH_PROJECT=portafolio-dic
+```
+
+También se acepta el alias `LANGCHAIN_TRACING_V2` + `LANGCHAIN_API_KEY`. El grafo
+recibe únicamente `run_name`, tags y metadatos agregados (run, escenario, flujo,
+`advisory_only`, `external_writes`). El estado que traza LangGraph contiene el
+contexto sanitizado del incidente y resúmenes acotados de herramientas; no
+incluye filas crudas, credenciales, la IP del visitante ni la respuesta completa
+del proveedor. No se usa el contenido como texto libre de traza. Para un entorno
+especialmente restrictivo se pueden activar `LANGSMITH_HIDE_INPUTS=true` y
+`LANGSMITH_HIDE_OUTPUTS=true`. La respuesta expone
+`observabilidad.langsmith: "activado" | "desactivado"` sin valores secretos.
+
+## 6. Evaluación
+
+Comando reproducible (sin red, sin costo):
+
+```bash
+python scripts/evaluar_agente_dic.py --proveedor simulado
+```
+
+Conjunto sintético de 14 incidentes, 12 evaluables y 2 adversariales
+(`i09`, `i10`). Resultado del 2026-11-27:
+
+| Métrica | Agente LangGraph | Determinista |
+|---|---:|---:|
+| Plan correcto | 12/12 | 8/12 |
+| Selección exacta de herramientas | 12/12 | n/a (3 fijas) |
+| Bloqueos correctos | 2/2 | 0/2 |
+| Llamadas al modelo / herramientas | 35 / 23 | 0 / 42 |
+| Latencia media local | 17.8 ms | ~0 ms |
+| Costo | no calculable (simulado) | 0 |
+| Escrituras externas | 0 | 0 |
+
+El agente y el baseline se miden por separado en
+`app/evals/dic/resultados/agente-2026-11-27-langgraph-simulado.json`. La corrida
+**real** no se ejecutó: en este entorno no hay `LLM_API_KEY`, `LLM_MODEL` ni
+`LLM_CUOTA_HMAC_KEY`. El script aborta antes de la primera llamada si faltan, y el
+tope de evaluación es **USD 0.50**; para una corrida real se debe ajustar el cupo
+de evaluación en un entorno seguro y revisar el costo medido.
+
+Diferencias que la tabla no debe ocultar:
+
+- el agente simulado sigue un guion determinista; sus 12/12 miden el contrato y
+  las guardas, no la calidad de un modelo real;
+- la latencia es de pared en local, no latencia de red del proveedor;
+- el baseline no fue diseñado para bloquear herramientas hostiles; por eso sus
+  bloqueos se reportan como 0 y no se le atribuye esa capacidad;
+- el plan del baseline es siempre `quarantine`, de modo que su 8/12 refleja los
+  casos cuyo plan esperado coincide con esa política conservadora.
+
+## 7. Verificación ejecutada
+
+```bash
+# suite completa (entorno local con shim de pyOpenSSL)
+python -m pytest -q
+
+# pruebas específicas
+python -m pytest tests/test_agente_dic.py tests/test_agente_langgraph.py \
+  tests/test_eval_agente_dic.py -q
+
+# flujo del agente en navegador
+node tools/verificar-agent-flow.mjs
+```
+
+En la ejecución local: **512 passed, 11 skipped** en la suite completa; **30
+pruebas específicas** del agente/evaluación y **24 comprobaciones** del flujo de
+navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
+reales descargados. El entorno de desarrollo requirió un shim local de pyOpenSSL
+por una incompatibilidad de la máquina, no del repositorio; CI instala las
+dependencias fijadas.
+
+## 8. MCP: decisión de esta iteración
+
+«Analista asistido por IA» sigue siendo un caso **Próximamente** sin repositorio
+ni consumidor concreto. No se implementó un servidor MCP ni un cliente separado
+porque no habría una reutilización demostrable; hacerlo ahora sería una interfaz
+sin consumidor. La herramienta propuesta y sus permisos están en
+[`MCP-ANALISTA.md`](MCP-ANALISTA.md). Se priorizó terminar y evaluar Incident
+Commander.
+
+## 9. Bloqueos y pendientes
+
+- Corrida real con un modelo: faltan credenciales del entorno seguro; no se
+  inventaron métricas ni se usó una clave del repositorio.
+- Despliegue: fuera de alcance; los cambios se entregan como ramas/PRs revisables.
+- LangSmith: no se ejecutó una traza real contra el servicio porque no hay
+  `LANGSMITH_API_KEY`; la prueba cubre el apagado y la configuración saneada.
+- La interfaz etiqueta la traza como reproducción; un streaming SSE queda como
+  siguiente mejora, no se presenta como hecho.
+- El linaje es una fixture declarada de la demo, no un catálogo corporativo.
