@@ -208,6 +208,13 @@ def _validar_evidencia(evidencia: list[str], usadas: list[str]) -> tuple[bool, s
 
 def _comprobar_limites(estado: EstadoAgente) -> None:
     if int(estado["pasos"]) >= int(estado["max_pasos"]):
+        _evento(
+            estado,
+            "parada",
+            actor="servidor",
+            resumen=f"Se alcanzó el máximo de {estado['max_pasos']} pasos; no se ejecutó ninguna reparación.",
+            motivo="limite_pasos",
+        )
         raise AgenteLimitePasos(
             f"El agente no cerró la consulta en {estado['max_pasos']} pasos; no se devuelve recomendación.",
             traza=estado.get("traza"),
@@ -215,6 +222,13 @@ def _comprobar_limites(estado: EstadoAgente) -> None:
         )
     transcurrido = time.monotonic() - float(estado["inicio_monotonic"])
     if transcurrido > float(estado["max_segundos"]):
+        _evento(
+            estado,
+            "parada",
+            actor="servidor",
+            resumen="Se superó el tiempo máximo de investigación; no se ejecutó ninguna reparación.",
+            motivo="tiempo",
+        )
         raise AgenteTiempo(
             "El agente superó el tiempo máximo de investigación; se detuvo sin recomendación.",
             traza=estado.get("traza"),
@@ -249,6 +263,13 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
             estado["traza"].append(
                 _traza_paso(int(estado["pasos"]) + 1, "presupuesto", motivo="estimacion")
             )
+            _evento(
+                estado,
+                "parada",
+                actor="servidor",
+                resumen="El siguiente paso no cabe en el presupuesto de tokens; no se ejecutó ninguna reparación.",
+                motivo="presupuesto",
+            )
             raise AgentePresupuesto(
                 "El agente alcanzó su presupuesto de tokens; se detuvo sin otra llamada.",
                 traza=estado.get("traza"),
@@ -257,13 +278,42 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
 
         estado["pasos"] = int(estado.get("pasos", 0)) + 1
         estado["llamadas_modelo"] = int(estado.get("llamadas_modelo", 0)) + 1
-        sobre = cliente.solicitar_chat(
-            settings,
-            estado["mensajes"],
-            herramientas=esquemas,
-            max_tokens=salida_tope,
-        )
-        uso = cliente.uso(sobre)
+        with observabilidad.traza(
+            "modelo-dic",
+            run_type="llm",
+            inputs={
+                "paso": int(estado["pasos"]),
+                "evidencia_previa": len(estado.get("evidencia", [])),
+                "herramientas_usadas": list(estado.get("herramientas_usadas", [])),
+            },
+            metadata={"presupuesto_restante": int(estado["presupuesto_tokens"]) - int(estado["tokens_consumidos"])},
+        ) as span:
+            sobre = cliente.solicitar_chat(
+                settings,
+                estado["mensajes"],
+                herramientas=esquemas,
+                max_tokens=salida_tope,
+            )
+            uso = cliente.uso(sobre)
+            respuesta = cliente.mensaje(sobre)
+            llamadas = respuesta.get("tool_calls") or []
+            nombres = [
+                str((llamada.get("function") or {}).get("name") or "")
+                for llamada in llamadas
+                if isinstance(llamada, dict)
+            ]
+            if span is not None:
+                try:
+                    span.add_outputs(
+                        {
+                            "tokens": uso.get("total_tokens") if uso else None,
+                            "herramientas": nombres,
+                            "final": not bool(llamadas),
+                        }
+                    )
+                except Exception:
+                    # La traza externa es observabilidad, no parte del contrato.
+                    pass
         if uso and isinstance(uso.get("total_tokens"), int):
             estado["tokens_consumidos"] = int(estado.get("tokens_consumidos", 0)) + int(
                 uso["total_tokens"]
@@ -272,14 +322,19 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
             estado["traza"].append(
                 _traza_paso(int(estado["pasos"]), "presupuesto", motivo="consumo")
             )
+            _evento(
+                estado,
+                "parada",
+                actor="servidor",
+                resumen="Se agotó el presupuesto de tokens sin cerrar la consulta; no se ejecutó ninguna reparación.",
+                motivo="presupuesto",
+            )
             raise AgentePresupuesto(
                 "El agente agotó su presupuesto de tokens sin cerrar la consulta.",
                 traza=estado.get("traza"),
                 eventos=estado.get("eventos"),
             )
 
-        respuesta = cliente.mensaje(sobre)
-        llamadas = respuesta.get("tool_calls") or []
         if llamadas:
             estado["llamadas"] = [
                 llamada for llamada in llamadas if isinstance(llamada, dict)
@@ -423,7 +478,23 @@ def _compilar(servicio: dic.IncidentCommander, settings: Settings):
                 ) from exc
 
             try:
-                resultado = definicion.ejecutar(servicio, estado["run_id"], validos)
+                with observabilidad.traza(
+                    "herramienta-dic",
+                    run_type="tool",
+                    inputs={"herramienta": nombre, "paso": int(estado["pasos"])},
+                    metadata={"solo_lectura": True},
+                ) as span:
+                    resultado = definicion.ejecutar(servicio, estado["run_id"], validos)
+                    if span is not None:
+                        try:
+                            span.add_outputs(
+                                {
+                                    "resumen": resultado.get("resumen", ""),
+                                    "evidencia_id": resultado.get("evidencia_id", nombre),
+                                }
+                            )
+                        except Exception:
+                            pass
             except dic.ScenarioError as exc:
                 _evento(
                     estado,

@@ -214,6 +214,8 @@ def test_langsmith_apagado_por_defecto(monkeypatch) -> None:
     assert observabilidad.habilitado() is False
     assert observabilidad.config_traza(run_id="DI-1", scenario_id="missing", modo="agente") == {}
     assert observabilidad.estado_publico() == {"langsmith": "desactivado"}
+    with observabilidad.traza("prueba", inputs={"paso": 1}) as span:
+        assert span is None
 
 
 def test_langsmith_activo_solo_envia_metadatos_sanitizados(monkeypatch) -> None:

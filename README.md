@@ -72,6 +72,7 @@ conciliación de cada migración, en los documentos de cada tablero.
 | openpyxl | 3.1.5 | Lectura de los boletines XLSX de la CNBV |
 | LangGraph / langchain-core | 1.2.4 / 1.4.0 | Grafo del agente supervisor del DIC |
 | LangSmith | 0.8.14 | Trazas opcionales, desactivadas por omisión |
+| MCP | 1.26.0 | Piloto local stdio de búsqueda de Banxico; no expuesto |
 | MongoDB | MongoDB Atlas, plan M0 (512 MB, compartido) | Base de datos documental |
 | pytest + httpx | 8.4.2 / 0.28.1 | Pruebas |
 
@@ -406,7 +407,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Estado verificado en el repositorio: **362 pruebas pasan y 11 se omiten**. Las
+Estado verificado en el repositorio: **521 pruebas pasan y 11 se omiten**. Las
 omisiones no son fallos ocultos: requieren los boletines reales de la CNBV en
 `data/cnbv/` (periodos 202410, 202409 y 202310) y lo declaran con ese motivo. Los
 archivos se obtienen con `python -m scripts.importar_cnbv --descargar`; no se
@@ -592,9 +593,29 @@ Son cifras del doble simulado, **no** de un modelo real. La corrida real no se
 ejecutó porque este entorno no tiene `LLM_API_KEY`, `LLM_MODEL` ni
 `LLM_CUOTA_HMAC_KEY`; el script aborta antes de cualquier llamada y el tope de
 evaluación es USD 0.50. Detalle de arquitectura y evidencia:
-[`docs/AGENTE-LANGGRAPH.md`](docs/AGENTE-LANGGRAPH.md). La decisión sobre MCP está
-documentada en [`docs/MCP-ANALISTA.md`](docs/MCP-ANALISTA.md): no hay consumidor
-concreto todavía y no se implementó un servidor MCP.
+[`docs/AGENTE-LANGGRAPH.md`](docs/AGENTE-LANGGRAPH.md). Trazas sanitizadas
+comparativas en [`docs/trazas/agente-2026-11-27-simulado.json`](docs/trazas/agente-2026-11-27-simulado.json).
+El piloto MCP local está documentado en
+[`docs/MCP-ANALISTA.md`](docs/MCP-ANALISTA.md): servidor `stdio`, cliente separado
+y evidencia en `docs/evidencia-mcp.json`. No hay servidor MCP expuesto por HTTP.
+
+### Piloto MCP local · Banxico
+
+`app/mcp_banxico/server.py` expone por **stdio** la herramienta
+`banxico_buscar_fragmentos`; reutiliza la recuperación léxica real de
+`BriefingBanxico`, no llama al LLM y acota la salida a tres fragmentos de 1 200
+caracteres. El cliente separado demuestra descubrimiento e invocación:
+
+```bash
+python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
+```
+
+La evidencia observada incluye la herramienta descubierta, el fragmento real
+`BM-2026-11-05-TASA` y una abstención para una consulta sin coincidencias. El
+servidor no se publica. Faltan autenticación, aislamiento y límites de tasa si se
+expone fuera del proceso local; el consumidor de producto («Analista asistido por
+IA») sigue pendiente. El cliente se ejecutó localmente y la salida quedó en
+`docs/evidencia-mcp.json`.
 
 
 ## Contrato de evidencia del briefing

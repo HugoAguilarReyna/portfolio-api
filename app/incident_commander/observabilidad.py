@@ -13,7 +13,9 @@ agente funciona igual y no se crea ningún cliente de LangSmith.
 from __future__ import annotations
 
 import os
-from typing import Any
+import sys
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 
 def _booleano(nombre: str) -> bool:
@@ -51,3 +53,46 @@ def config_traza(*, run_id: str, scenario_id: str, modo: str) -> dict[str, Any]:
 def estado_publico() -> dict[str, str]:
     """Estado que puede mostrarse en una respuesta; nunca incluye la clave."""
     return {"langsmith": "activado" if habilitado() else "desactivado"}
+
+
+@contextmanager
+def traza(
+    nombre: str,
+    *,
+    run_type: str = "chain",
+    inputs: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Iterator[Any]:
+    """Span hijo opcional para herramienta/modelo; no-op si LangSmith está apagado.
+
+    El llamador solo pasa campos agregados (nombre de herramienta, paso, tokens).
+    Cualquier error del trazado se absorbe: una traza externa no debe tumbar la
+    investigación ni cambiar su resultado.
+    """
+    if not habilitado():
+        yield None
+        return
+    gestor = None
+    try:
+        from langsmith import trace as _trace
+
+        gestor = _trace(nombre, run_type=run_type, inputs=inputs or {}, metadata=metadata or {})
+        span = gestor.__enter__()
+    except Exception:
+        yield None
+        return
+    try:
+        yield span
+    except BaseException:
+        try:
+            if gestor is not None:
+                gestor.__exit__(*sys.exc_info())
+        except Exception:
+            pass
+        raise
+    else:
+        try:
+            if gestor is not None:
+                gestor.__exit__(None, None, None)
+        except Exception:
+            pass

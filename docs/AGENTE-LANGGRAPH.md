@@ -35,6 +35,8 @@ mientras `duplicate` usa `validaciones → catalogo_planes`.
 | `app/api/v1/routes/incident_commander.py` | `POST …/agent` y `?flujo=determinista` |
 | `tests/test_agente_langgraph.py` | rutas distintas, evidencia, paradas, LangSmith |
 | `scripts/evaluar_agente_dic.py` | evaluación comparada y tope de costo |
+| `scripts/generar_trazas_dic.py` | trazas sanitizadas de rutas distintas, abstención y bloqueos |
+| `docs/trazas/agente-2026-11-27-simulado.json` | evidencia comparativa de las corridas |
 | `app/evals/dic/resultados/agente-2026-11-27-langgraph-simulado.json` | resultados simulados |
 | `dist/dashboards/data-incident-commander/*` (sitio) | pestaña «Flujo del agente» y reproducción |
 
@@ -113,12 +115,16 @@ LANGSMITH_PROJECT=portafolio-dic
 
 También se acepta el alias `LANGCHAIN_TRACING_V2` + `LANGCHAIN_API_KEY`. El grafo
 recibe únicamente `run_name`, tags y metadatos agregados (run, escenario, flujo,
-`advisory_only`, `external_writes`). El estado que traza LangGraph contiene el
-contexto sanitizado del incidente y resúmenes acotados de herramientas; no
-incluye filas crudas, credenciales, la IP del visitante ni la respuesta completa
-del proveedor. No se usa el contenido como texto libre de traza. Para un entorno
-especialmente restrictivo se pueden activar `LANGSMITH_HIDE_INPUTS=true` y
-`LANGSMITH_HIDE_OUTPUTS=true`. La respuesta expone
+`advisory_only`, `external_writes`). Además, cada llamada crea un span hijo:
+`modelo-dic` (paso, herramientas elegidas, tokens, final) y `herramienta-dic`
+(nombre, duración, resumen y `evidencia_id`). Así la ruta, las herramientas, sus
+tiempos y el resultado son inspeccionables sin enviar mensajes internos.
+
+El estado que traza LangGraph contiene el contexto sanitizado del incidente y
+resúmenes acotados de herramientas; no incluye filas crudas, credenciales, la IP
+del visitante ni la respuesta completa del proveedor. No se usa el contenido como
+texto libre de traza. Para un entorno especialmente restrictivo se pueden activar
+`LANGSMITH_HIDE_INPUTS=true` y `LANGSMITH_HIDE_OUTPUTS=true`. La respuesta expone
 `observabilidad.langsmith: "activado" | "desactivado"` sin valores secretos.
 
 ## 6. Evaluación
@@ -167,29 +173,59 @@ python -m pytest -q
 
 # pruebas específicas
 python -m pytest tests/test_agente_dic.py tests/test_agente_langgraph.py \
-  tests/test_eval_agente_dic.py -q
+  tests/test_eval_agente_dic.py tests/test_mcp_banxico.py -q
+
+# trazas sanitizadas comparativas
+python scripts/generar_trazas_dic.py
+
+# MCP local: descubrimiento e invocación con el cliente separado
+python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
 
 # flujo del agente en navegador
 node tools/verificar-agent-flow.mjs
 ```
 
-En la ejecución local: **512 passed, 11 skipped** en la suite completa; **30
-pruebas específicas** del agente/evaluación y **24 comprobaciones** del flujo de
+En la ejecución local: **521 passed, 11 skipped** en la suite completa; **39
+pruebas específicas** del agente/evaluación/MCP y **24 comprobaciones** del flujo de
 navegador del sitio. Las 11 omisiones son pruebas de CNBV que requieren boletines
 reales descargados. El entorno de desarrollo requirió un shim local de pyOpenSSL
 por una incompatibilidad de la máquina, no del repositorio; CI instala las
 dependencias fijadas.
 
-## 8. MCP: decisión de esta iteración
+## 8. MCP: piloto local de Banxico
 
-«Analista asistido por IA» sigue siendo un caso **Próximamente** sin repositorio
-ni consumidor concreto. No se implementó un servidor MCP ni un cliente separado
-porque no habría una reutilización demostrable; hacerlo ahora sería una interfaz
-sin consumidor. La herramienta propuesta y sus permisos están en
-[`MCP-ANALISTA.md`](MCP-ANALISTA.md). Se priorizó terminar y evaluar Incident
-Commander.
+«Analista asistido por IA» sigue siendo un caso **Próximamente**, pero el piloto
+MCP ya tiene un consumidor local separado. El servidor `app/mcp_banxico/server.py`
+se ejecuta por **stdio** (no HTTP) y expone `banxico_buscar_fragmentos`, que
+reutiliza la recuperación léxica real de `BriefingBanxico`. El cliente
+`scripts/mcp_cliente_banxico.py` arranca el servidor, descubre la herramienta,
+invoca una pregunta de tasa objetivo y comprueba una abstención.
 
-## 9. Bloqueos y pendientes
+```bash
+python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
+```
+
+La evidencia observada está en `docs/evidencia-mcp.json`: herramienta descubierta,
+`BM-2026-11-05-TASA` como fragmento real, dos fragmentos máximos y
+`servidor_expuesto_publicamente: false`. La salida está acotada a 1 200 caracteres
+por extracto y no incluye filas completas ni credenciales. El servidor no se
+publica; autenticación, aislamiento y límites de tasa quedan pendientes si se
+expone fuera de local. Contrato completo: [`MCP-ANALISTA.md`](MCP-ANALISTA.md).
+
+## 9. Evidencia por tecnología
+
+| Tecnología | Archivo de entrada | Qué se ejecutó | Resultado observado | Pendiente |
+|---|---|---|---|---|
+| **LangGraph** | `app/incident_commander/grafo.py` | `pytest tests/test_agente_langgraph.py`; corridas con guion y `scripts/generar_trazas_dic.py` | Grafo con nodos modelo/herramienta/validación; dos rutas distintas (`perfil→linaje` y `perfil→validaciones`); abstención, bloqueo y parada por presupuesto | Corrida con modelo real; hoy el proveedor es simulado |
+| **LangChain** | `app/incident_commander/herramientas.py` | `convert_to_openai_tool` sobre los siete modelos Pydantic; pruebas del catálogo | Esquemas de herramientas tipados y validados por el servidor | Nada adicional para este alcance |
+| **LangSmith** | `app/incident_commander/observabilidad.py` y `grafo.py` | `pytest` del modo apagado y de la configuración saneada; spans `modelo-dic` y `herramienta-dic` | La demo funciona con la traza apagada; con bandera y clave envía ruta, herramientas, tiempos y resúmenes sanitizados | Verificación remota: falta `LANGSMITH_API_KEY`; no se envió ninguna traza real |
+| **MCP** | `app/mcp_banxico/server.py` + `scripts/mcp_cliente_banxico.py` | `python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json` | Descubrimiento de `banxico_buscar_fragmentos`, invocación real con `BM-2026-11-05-TASA`, abstención y límite de 3 fragmentos; servidor stdio no público | Analista de producto, autenticación y aislamiento si se expone fuera de local |
+
+La tabla distingue lo ejecutado de lo pendiente. LangGraph y LangChain están
+integrados en el código y probados; LangSmith y MCP tienen integración local
+verificada, pero no una verificación remota ni un despliegue público.
+
+## 10. Bloqueos y pendientes
 
 - Corrida real con un modelo: faltan credenciales del entorno seguro; no se
   inventaron métricas ni se usó una clave del repositorio.

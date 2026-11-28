@@ -17,6 +17,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.incident_commander import service as dic
@@ -56,14 +57,14 @@ class Herramienta:
     ejecutar: Callable[[dic.IncidentCommander, str, BaseModel], dict[str, Any]]
 
     def esquema(self) -> dict[str, Any]:
-        return {
-            "type": "function",
-            "function": {
-                "name": self.nombre,
-                "description": self.descripcion,
-                "parameters": self.modelo.model_json_schema(),
-            },
-        }
+        # LangChain adapta el modelo Pydantic al esquema de función que consume
+        # el proveedor. El nombre y la descripción del catálogo son la autoridad;
+        # el esquema generado solo describe argumentos tipados.
+        esquema = convert_to_openai_tool(self.modelo)
+        funcion = esquema.setdefault("function", {})
+        funcion["name"] = self.nombre
+        funcion["description"] = self.descripcion
+        return esquema
 
 
 class ArgumentosInvalidos(ValueError):

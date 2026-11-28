@@ -1,91 +1,110 @@
-# MCP en el portafolio · decisión y herramienta propuesta
+# MCP en el portafolio · piloto local de Banxico
 
 **Fecha:** 27 de noviembre de 2026
-**Decisión:** no se implementa un servidor MCP en esta iteración.
+**Estado:** piloto local implementado y verificado con un cliente MCP separado.
+**No** hay servidor MCP expuesto por HTTP ni integrado en la interfaz pública.
 
-## Por qué no
+## Por qué un piloto local
 
-«Analista asistido por IA» aparece en el portafolio como **Próximamente**, sin
-repositorio ni implementación utilizable. Tampoco existe hoy un cliente que
-consuma herramientas MCP: la demo de Incident Commander usa su propio catálogo
-Pydantic y el Briefing de Banxico se sirve por su ruta HTTP. Añadir un servidor
-MCP sin consumidor sería una interfaz decorativa, no una reutilización
-demostrable. Se priorizó terminar y evaluar el agente de Incident Commander.
+«Analista asistido por IA» sigue siendo un caso **Próximamente**, sin repositorio
+ni interfaz. Para no añadir una arquitectura sin consumidor, se implementó un
+**cliente MCP local separado** que usa la misma recuperación léxica real del
+Briefing de Banxico. El cliente arranca el servidor por `stdio`, hace
+descubrimiento de herramientas, invoca una búsqueda y comprueba una abstención.
+El servidor no se abre en ningún puerto.
 
-## Herramienta que quedaría disponible
+## Archivos
 
-Si se construye «Analista asistido por IA», la primera herramienta MCP de solo
-lectura sería **`banxico_buscar_fragmentos`**, porque el corpus y la recuperación
-léxica ya existen en `app/rag_banxico/service.py` y ya tienen contrato probado.
+| Archivo | Responsabilidad |
+|---|---|
+| `app/mcp_banxico/server.py` | servidor FastMCP por `stdio` y herramienta `banxico_buscar_fragmentos` |
+| `scripts/mcp_cliente_banxico.py` | cliente MCP separado: descubrimiento e invocación |
+| `docs/evidencia-mcp.json` | salida reproducible del cliente |
+| `tests/test_mcp_banxico.py` | validación de parámetros, límites y abstención |
 
-### Entrada
+## Herramienta
+
+### `banxico_buscar_fragmentos`
+
+Entrada:
 
 ```json
-{
-  "consulta": "¿cuál es la tasa objetivo?",
-  "limite": 3
-}
+{"consulta": "¿cuál es la tasa objetivo de Banco de México?", "limite": 2}
 ```
 
-- `consulta`: texto de 1 a 500 caracteres, obligatorio.
-- `limite`: entero entre 1 y 3; por omisión 3.
+- `consulta`: texto de 3 a 500 caracteres; se normalizan espacios.
+- `limite`: entero de 1 a 3; por omisión 3.
+- El servidor rechaza tipos incorrectos y valores fuera de rango con `ValueError`;
+  el SDK MCP devuelve el error al cliente.
 
-### Salida
+Salida (máximo tres fragmentos, extracto de 1 200 caracteres):
 
 ```json
 {
   "abstenido": false,
   "fragmentos": [
     {
-      "chunk_id": "BM-2026-11-05#3",
+      "chunk_id": "BM-2026-11-05-TASA",
       "source_id": "BM-2026-11-05",
       "titulo": "Anuncio de Política Monetaria",
       "fecha": "2026-11-05",
-      "extracto": "…texto acotado…",
-      "score": 0.82
+      "extracto": "…",
+      "score": 3
     }
   ],
-  "limite_aplicado": 3,
+  "limite_aplicado": 2,
+  "modo_recuperacion": "corpus-local",
   "solo_lectura": true
 }
 ```
 
-- Devuelve como máximo tres fragmentos y un extracto acotado (máximo 1 200
-  caracteres por fragmento; 3 600 en total).
-- Si no hay coincidencia léxica, `abstenido: true` y `fragmentos: []`; no inventa
-  texto ni rellena con documentos ajenos.
-- No devuelve vectores, rutas del sistema, credenciales ni la pregunta original
-  almacenada.
+- Reutiliza `BriefingBanxico.recuperar()` y `puntuar()`; no reimplementa la
+  recuperación ni inventa coincidencias.
+- **No** llama al LLM, no consulta Atlas (`BriefingBanxico(None, …)`) y no escribe.
+- Si no hay coincidencia léxica: `abstenido: true` y `fragmentos: []`.
+- No expone rutas del sistema, URI de Mongo, credenciales, el corpus completo ni
+  el contenido de todos los documentos.
 
-### Permisos y límites
+## Demostración reproducible
 
-- Solo lectura sobre el corpus versionado (`data/snapshots/banxico/corpus.json`)
-  y, si está configurada, la colección `portfolio_demos.rag_banxico_chunks`.
-- Sin escrituras, sin aprobación, sin ejecución de SQL ni de remediaciones.
-- La herramienta no llama al LLM; si un cliente la usa como contexto, la llamada
-  al modelo y su costo se contabilizan en la ruta del cliente (misma cuota y
-  presupuesto del agente).
-- El servidor MCP, cuando exista, debe declarar esta herramienta con nombre
-  explícito, `readOnlyHint: true` y sin argumentos libres fuera del esquema.
-- El transporte y la autenticación se definirán con el consumidor; no se publica
-  un endpoint MCP anónimo en producción.
+```bash
+python scripts/mcp_cliente_banxico.py --salida docs/evidencia-mcp.json
+```
 
-## Quién la usaría
+El cliente:
 
-El consumidor previsto es **«Analista asistido por IA»**: un cliente MCP separado
-que recibe una pregunta, consulta `banxico_buscar_fragmentos`, decide si la
-evidencia es suficiente y devuelve una respuesta con citas. Ese cliente no existe
-todavía; esta nota define el contrato para cuando se implemente.
+1. arranca `python -m app.mcp_banxico.server` con `stdio`;
+2. inicializa la sesión MCP;
+3. descubre el catálogo y confirma la herramienta;
+4. invoca la pregunta de tasa objetivo con `limite=2`;
+5. invoca una consulta sin coincidencias para comprobar la abstención.
 
-## Cómo se demostraría (siguiente iteración)
+Resultado local observado:
 
-1. Crear el servidor MCP en un proceso separado, con la herramienta anterior.
-2. Crear un cliente MCP mínimo que haga una pregunta y muestre `chunk_id` y
-   `source_id`.
-3. Verificar que el resultado coincide con `BriefingBanxico.consultar()` para la
-   misma consulta y que una abstención se propaga como tal.
-4. Añadir una prueba sin red y otra con el corpus real; registrar la llamada y el
-   costo del cliente, no atribuirlos a Incident Commander.
+- herramienta descubierta: `banxico_buscar_fragmentos`;
+- fragmento real: `BM-2026-11-05-TASA` (Anuncio de Política Monetaria, 5 nov 2026);
+- dos fragmentos como máximo y abstención para una consulta sin términos;
+- `servidor_expuesto_publicamente: false`.
 
-Hasta entonces, la integración MCP queda **documentada, no implementada**. No se
-presenta como capacidad demostrada en la ficha del proyecto.
+## Permisos y límites
+
+- Solo lectura sobre el corpus versionado de Banxico; sin escrituras ni
+  aprobaciones.
+- Transporte `stdio` local; no hay endpoint HTTP, autenticación pública ni CORS.
+- La herramienta no consume cuota de LLM porque no llama a un proveedor. Si un
+  cliente futuro la usa para aumentar un prompt, esa llamada debe contabilizarse
+  en la ruta del cliente con las cuotas existentes.
+- El servidor debe permanecer fuera de exposición pública en este piloto. Antes
+  de publicarlo harían falta autenticación, aislamiento por proceso y límites de
+  tasa propios.
+
+## Consumidor y pendientes
+
+El consumidor de producto sigue pendiente: «Analista asistido por IA» no existe
+todavía. El cliente local demuestra el caso de reutilización, no un producto
+terminado. Pendiente para una siguiente iteración:
+
+1. integrar el cliente en el flujo del analista;
+2. definir autenticación y aislamiento si el servidor deja de ser local;
+3. añadir una prueba con el corpus real en CI (hoy la prueba directa es local);
+4. medir latencia y tamaño de salida del cliente en el entorno de ejecución.
